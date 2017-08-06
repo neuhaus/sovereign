@@ -12,7 +12,7 @@ except ImportError:
 
 def check_lib():
     if not HAS_LIB:
-        raise AnsibleError('You need to install "passlib" prior to running '
+        raise AnsibleError('You need to install "passlib" (package "python-passlib") prior to running '
                            'password_hash-based filters')
 
 
