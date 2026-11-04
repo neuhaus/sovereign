@@ -159,9 +159,9 @@ Implementation order: 2.1, 2.2, the certificate part of 2.5, 2.3, 2.4, rest of 2
 
 - The `maildb` role (written in Phase 2.3) acts strictly on `group_vars/mailservers.yml`: `mail_domains`, `mail_mailboxes` (with `app_passwords`) and `mail_aliases`.
 - Domains, mailboxes, App-Specific Passwords and aliases **precisely mirror** the code state, including removal of entries no longer defined; manual changes in the database are reverted on the next run.
-- **Open decision:** whether users may change their own passwords / app passwords (e.g. via Roundcube). If yes, Ansible keeps managing domains, mailboxes and aliases but only sets initial password hashes.
+- **Password self-service:** users change their own main password in Roundcube (password plugin). Ansible sets the initial password hash when it creates a mailbox and does not touch it afterwards; everything else (domains, mailboxes, aliases, App-Specific Passwords) stays exactly mirrored. Roundcube therefore gets write access to the mail database (only it and Ansible write); App-Specific Passwords remain admin-managed via `group_vars`.
 
-**Tests:** adding, changing and removing users, aliases and App-Specific Passwords in the variables is reflected in the database; a second run reports no changes; a removed user can no longer log in.
+**Tests:** adding, changing and removing users, aliases and App-Specific Passwords in the variables is reflected in the database; a password changed by the user survives the next Ansible run; a second run reports no changes; a removed user can no longer log in.
 
 ---
 
@@ -245,3 +245,4 @@ Rewrite the README and Wiki to reflect the modernized, bare-metal deployment str
 | Admin web UI | none; administration via `group_vars` (GitOps) |
 | Postfix master.cf | Debian's own, submission added via `postconf` |
 | Implementation order | certificate part of 2.5 before 2.3 |
+| Password self-service | users change their main password in Roundcube; Ansible sets only the initial hash; App-Specific Passwords stay admin-managed |

@@ -46,7 +46,7 @@ will be deleted once replaced.
 | Mail exporters | Dovecot's own OpenMetrics endpoint (port 9900) instead of mtail | no syslog files on Debian 13; Postfix exporter differs widely between releases |
 | Rspamd web UI | localhost only (SSH tunnel), Debian's default password `q1` replaced by a random hash | |
 | Outbound MTA-STS | small socketmap shim: DANE (TLSA via DNSSEC) first, else postfix-mta-sts-resolver | the resolver alone lets MTA-STS override DANE (against RFC 8461) |
-| User admin | Ansible mirrors `group_vars`; password self-service still open | see "Open" |
+| User admin | Ansible mirrors `group_vars`; users change their own main password in Roundcube, Ansible only sets the initial hash; app passwords admin-only | decided before 2.6 |
 | Target hardware | 2 GB RAM | FTS indexer limited to one process |
 
 ## Findings worth knowing
@@ -85,8 +85,10 @@ will be deleted once replaced.
 
 ## Open
 
-- Password self-service (users changing their own passwords / app
-  passwords) vs. Ansible as the only writer: decide before Phase 3 is closed.
+- Password self-service (decided: main password in Roundcube) to implement
+  in 2.6: maildb sets the hash only on creation and ignores it in the
+  comparison; Roundcube (and only it) gets write access to the mail database,
+  which then needs a group-writable directory for the rollback journal.
 - postsrsd milter mode (see findings).
 - Unbound: systemd-resolved is masked when present; check on real servers.
 - Role design documents: CONTRIBUTING.md asks for one per role; the new roles
