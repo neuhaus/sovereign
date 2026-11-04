@@ -9,6 +9,7 @@ def test_knot_running(host):
     assert knot.is_enabled
 
 
-def test_knot_listens_on_port_53(host):
-    assert host.socket("udp://53").is_listening
-    assert host.socket("tcp://53").is_listening
+def test_knot_listens_on_test_address(host):
+    ip = host.ansible.get_variables()["sovtest_ips"]["dns"]
+    assert host.socket(f"udp://{ip}:53").is_listening
+    assert host.socket(f"tcp://{ip}:53").is_listening

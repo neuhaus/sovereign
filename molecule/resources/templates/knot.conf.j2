@@ -4,7 +4,9 @@
 server:
     rundir: "/run/knot"
     user: knot:knot
-    listen: [ 0.0.0.0@53 ]
+    # Only the test address: systemd-resolved's stub listener already holds
+    # port 53 on loopback, so a wildcard bind fails.
+    listen: [ {{ sovtest_ips.dns }}@53 ]
 
 log:
   - target: syslog
