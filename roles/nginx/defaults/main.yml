@@ -1,0 +1,3 @@
+---
+# Webroot for ACME HTTP-01 challenges (certbot role).
+nginx_acme_webroot: /var/www/acme

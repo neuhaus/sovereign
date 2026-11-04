@@ -1,0 +1,47 @@
+---
+- name: Install nginx
+  ansible.builtin.apt:
+    name: nginx
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+
+- name: Create the ACME webroot
+  ansible.builtin.file:
+    path: "{{ nginx_acme_webroot }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Remove the Debian default site
+  ansible.builtin.file:
+    path: /etc/nginx/sites-enabled/default
+    state: absent
+  notify: Nginx configuration changed
+
+- name: Configure the HTTP site
+  ansible.builtin.template:
+    src: sovereign-http.conf.j2
+    dest: /etc/nginx/sites-available/sovereign-http.conf
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Nginx configuration changed
+
+- name: Enable the HTTP site
+  ansible.builtin.file:
+    src: /etc/nginx/sites-available/sovereign-http.conf
+    dest: /etc/nginx/sites-enabled/sovereign-http.conf
+    state: link
+  notify: Nginx configuration changed
+
+- name: Enable nginx
+  ansible.builtin.systemd_service:
+    name: nginx
+    state: started
+    enabled: true
+
+# certbot needs the challenge location before it requests a certificate.
+- name: Apply nginx configuration
+  ansible.builtin.meta: flush_handlers

@@ -1,0 +1,20 @@
+---
+# Names on the certificate. The first one is also the certificate name
+# (/etc/letsencrypt/live/<name>/). Usually the mail host name plus the
+# mta-sts., autoconfig. and autodiscover. names of each mail domain.
+certbot_domains: []
+
+# Contact address for the ACME account (expiry and policy notices).
+certbot_email: ""
+
+# ACME directory. Molecule points this at Pebble.
+certbot_server: https://acme-v02.api.letsencrypt.org/directory
+
+# Webroot served by nginx for HTTP-01 challenges.
+certbot_webroot: "{{ nginx_acme_webroot | default('/var/www/acme') }}"
+
+# Services reloaded after a renewal, if they are running.
+certbot_reload_services:
+  - nginx
+  - postfix
+  - dovecot

@@ -1,0 +1,76 @@
+---
+- name: Assert certificate settings
+  ansible.builtin.assert:
+    that:
+      - certbot_domains | length > 0
+      - certbot_email | length > 0
+    fail_msg: Set certbot_domains and certbot_email.
+    quiet: true
+
+- name: Install certbot
+  ansible.builtin.apt:
+    name: certbot
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+
+- name: Create the deploy hook directory
+  ansible.builtin.file:
+    path: /etc/letsencrypt/renewal-hooks/deploy
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Install the deploy hook
+  ansible.builtin.template:
+    src: sovereign-reload.j2
+    dest: /etc/letsencrypt/renewal-hooks/deploy/sovereign-reload
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Read the names on the current certificate
+  ansible.builtin.command:
+    argv:
+      - openssl
+      - x509
+      - -in
+      - "/etc/letsencrypt/live/{{ certbot_domains[0] }}/cert.pem"
+      - -noout
+      - -ext
+      - subjectAltName
+  register: certbot_current_san
+  changed_when: false
+  failed_when: false
+
+# Issue on first run and whenever the list of names changes. The key is kept
+# across renewals (--reuse-key) so the DANE TLSA record (3 1 1) stays valid;
+# rotating it is a deliberate step (see the documentation).
+- name: Request the certificate
+  ansible.builtin.command:
+    argv: >-
+      {{ ['certbot', 'certonly', '--non-interactive', '--agree-tos',
+          '--email', certbot_email,
+          '--server', certbot_server,
+          '--webroot', '--webroot-path', certbot_webroot,
+          '--cert-name', certbot_domains[0],
+          '--reuse-key', '--key-type', 'ecdsa', '--elliptic-curve', 'secp256r1']
+         + (certbot_domains | map('regex_replace', '^', '--domain=') | list) }}
+  when: >-
+    certbot_current_san.rc != 0
+    or (certbot_current_san.stdout | regex_findall('DNS:([^,\s]+)') | sort)
+       != (certbot_domains | sort)
+  changed_when: true
+  notify: Certificate changed
+
+- name: Enable the renewal timer
+  ansible.builtin.systemd_service:
+    name: certbot.timer
+    state: started
+    enabled: true
+
+# Postfix and Dovecot are configured right after this role and need the
+# certificate files.
+- name: Apply certificate changes
+  ansible.builtin.meta: flush_handlers

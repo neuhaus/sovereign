@@ -14,6 +14,8 @@
     - role: unbound
     - role: nftables
     - role: fail2ban
+    - role: nginx
+    - role: certbot
     - role: unattended_upgrades
     - role: systemd_timers
     - role: node_exporter

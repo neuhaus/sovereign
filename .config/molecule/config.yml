@@ -60,6 +60,14 @@ provisioner:
             addresses: ["{{ sovtest_ips.dns }}"]
         unbound_trust_anchor_files:
           - /etc/unbound/sovtest-anchors.conf
+        # Certificates come from Pebble, which validates HTTP-01 via the mock DNS.
+        certbot_server: "https://{{ sovtest_ips.pebble }}:14000/dir"
+        certbot_email: "postmaster@{{ sovtest_domain }}"
+        certbot_domains:
+          - "mail.{{ sovtest_domain }}"
+          - "mta-sts.{{ sovtest_domain }}"
+          - "autoconfig.{{ sovtest_domain }}"
+          - "autodiscover.{{ sovtest_domain }}"
         # dns acts as the monitoring host; pebble must not reach the exporters.
         monitoring_sources:
           - "{{ sovtest_ips.dns }}"

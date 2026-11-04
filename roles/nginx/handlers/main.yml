@@ -1,0 +1,13 @@
+---
+# Handlers run in the order they are defined: check first, then reload.
+- name: Check nginx configuration
+  ansible.builtin.command:
+    argv: [nginx, -t, -q]
+  changed_when: false
+  listen: Nginx configuration changed
+
+- name: Reload nginx
+  ansible.builtin.systemd_service:
+    name: nginx
+    state: reloaded
+  listen: Nginx configuration changed

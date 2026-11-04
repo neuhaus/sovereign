@@ -1,0 +1,7 @@
+---
+# A new or reissued certificate is picked up the same way as a renewal.
+- name: Run the deploy hook
+  ansible.builtin.command:
+    argv: [/etc/letsencrypt/renewal-hooks/deploy/sovereign-reload]
+  changed_when: true
+  listen: Certificate changed
