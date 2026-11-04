@@ -153,7 +153,7 @@ Troubleshooting
 
 If you run into an errors, please check the [wiki page](https://github.com/sovereign/sovereign/wiki/Troubleshooting). If the problem you encountered, is not listed, please go ahead and [create an issue](https://github.com/sovereign/sovereign/issues/new). If you already have a bugfix and/or workaround, just put them in the issue and the wiki page.
 
-IRC
-===
+Instant messaging
+-----------------
 
-Ask questions and provide feedback in `#sovereign` on [Freenode](http://freenode.net).
+Ask questions and provide feedback on Matrix in [#sovereign:ping.de](https://matrix.to/#/%23sovereign:ping.de).
