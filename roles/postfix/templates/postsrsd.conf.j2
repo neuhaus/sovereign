@@ -1,0 +1,7 @@
+# {{ ansible_managed }}
+# postsrsd 2: rewrites the envelope sender of forwarded mail (SRS) so SPF
+# checks at the next hop pass. Mail from these domains is not rewritten.
+domains = { {% for domain in postfix_local_domains %}"{{ domain }}"{{ ", " if not loop.last }}{% endfor %} }
+srs-domain = "{{ postfix_srs_domain }}"
+socketmap = unix:/var/spool/postfix/srs
+secrets-file = "/etc/postsrsd.secret"

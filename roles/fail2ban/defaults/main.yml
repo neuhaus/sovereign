@@ -14,3 +14,9 @@ fail2ban_jails:
     # sshd >= 9.8 logs authentication failures from the sshd-session process,
     # which runs inside ssh.service.
     journalmatch: _SYSTEMD_UNIT=ssh.service + _COMM=sshd + _COMM=sshd-session
+  # SMTP: rejected senders/recipients, SASL authentication failures and
+  # protocol abuse (aggressive mode covers all of them).
+  postfix:
+    mode: aggressive
+  # IMAP and ManageSieve authentication failures.
+  dovecot: {}

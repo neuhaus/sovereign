@@ -1,0 +1,94 @@
+---
+- name: Install dovecot
+  ansible.builtin.apt:
+    name: "{{ ['dovecot-core', 'dovecot-imapd', 'dovecot-lmtpd', 'dovecot-sqlite',
+               'dovecot-sieve', 'dovecot-managesieved']
+              + (['dovecot-flatcurve'] if dovecot_fts_enabled else []) }}"
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+
+- name: Create the mail storage user
+  ansible.builtin.user:
+    name: "{{ dovecot_vmail_user }}"
+    system: true
+    home: "{{ dovecot_vmail_dir }}"
+    create_home: false
+    shell: /usr/sbin/nologin
+
+- name: Create the mail storage directory
+  ansible.builtin.file:
+    path: "{{ dovecot_vmail_dir }}"
+    state: directory
+    owner: "{{ dovecot_vmail_user }}"
+    group: "{{ dovecot_vmail_user }}"
+    mode: "0700"
+
+# The auth worker runs as the dovecot user and reads the mail database.
+- name: Allow dovecot to read the mail database
+  ansible.builtin.user:
+    name: dovecot
+    groups: "{{ dovecot_maildb_group }}"
+    append: true
+  notify: Dovecot configuration changed
+
+- name: Create the mail_crypt key directory
+  ansible.builtin.file:
+    path: "{{ dovecot_mail_crypt_dir }}"
+    state: directory
+    owner: root
+    group: "{{ dovecot_vmail_user }}"
+    mode: "0750"
+
+# Generated once; never replaced, since mail encrypted with it would become
+# unreadable. Back up ecprivkey.pem together with the Restic password.
+- name: Generate the mail_crypt private key
+  ansible.builtin.shell:
+    cmd: >-
+      set -o pipefail;
+      openssl ecparam -name prime256v1 -genkey | openssl pkey -out ecprivkey.pem.new
+      && mv ecprivkey.pem.new ecprivkey.pem
+    chdir: "{{ dovecot_mail_crypt_dir }}"
+    creates: "{{ dovecot_mail_crypt_dir }}/ecprivkey.pem"
+    executable: /bin/bash
+
+- name: Derive the mail_crypt public key
+  ansible.builtin.command:
+    argv: [openssl, pkey, -in, ecprivkey.pem, -pubout, -out, ecpubkey.pem]
+    chdir: "{{ dovecot_mail_crypt_dir }}"
+    creates: "{{ dovecot_mail_crypt_dir }}/ecpubkey.pem"
+
+# Mail processes run as the vmail user and read the keys.
+- name: Set mail_crypt key permissions
+  ansible.builtin.file:
+    path: "{{ dovecot_mail_crypt_dir }}/{{ item.name }}"
+    owner: root
+    group: "{{ dovecot_vmail_user }}"
+    mode: "{{ item.mode }}"
+  loop:
+    - {name: ecprivkey.pem, mode: "0640"}
+    - {name: ecpubkey.pem, mode: "0644"}
+
+- name: Configure dovecot
+  ansible.builtin.template:
+    src: dovecot.conf.j2
+    dest: /etc/dovecot/dovecot.conf
+    owner: root
+    group: root
+    mode: "0644"
+    validate: doveconf -n -c %s
+  notify: Dovecot configuration changed
+
+# Dovecot opens its listeners itself (including 4190 and the metrics port);
+# Debian's activation socket would hold 143/993 in parallel.
+- name: Disable the dovecot activation socket
+  ansible.builtin.systemd_service:
+    name: dovecot.socket
+    state: stopped
+    enabled: false
+
+- name: Enable dovecot
+  ansible.builtin.systemd_service:
+    name: dovecot
+    state: started
+    enabled: true

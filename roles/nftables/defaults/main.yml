@@ -14,6 +14,7 @@ nftables_open_tcp_ports:
 # Exporter ports, reachable only from the monitoring hosts below.
 nftables_monitoring_tcp_ports:
   - 9100  # prometheus-node-exporter
+  - 9900  # dovecot stats (OpenMetrics)
 
 # IPv4 and IPv6 addresses or networks of the monitoring host(s). Set the global
 # variable `monitoring_sources` in the inventory. With an empty list no rule is

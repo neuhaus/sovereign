@@ -1,0 +1,139 @@
+---
+# postsrsd 2 (socketmap) is in Debian Testing and in trixie-backports; Debian
+# 13 itself ships 1.x with a different interface. Only postsrsd is installed
+# from backports (backports are pinned below stable by default).
+- name: Add trixie-backports
+  ansible.builtin.copy:
+    dest: /etc/apt/sources.list.d/debian-backports.sources
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      # Managed by Ansible (postfix role): postsrsd 2 for Debian 13.
+      Types: deb
+      URIs: http://deb.debian.org/debian
+      Suites: trixie-backports
+      Components: main
+      Signed-By: /usr/share/keyrings/debian-archive-keyring.gpg
+  when: sovereign_debian_track == 'trixie'
+  register: postfix_backports_source
+
+- name: Install postfix
+  ansible.builtin.apt:
+    name:
+      - postfix
+      - postfix-sqlite
+    state: present
+    update_cache: true
+    cache_valid_time: "{{ 0 if postfix_backports_source is changed else 3600 }}"
+
+- name: Install postsrsd
+  ansible.builtin.apt:
+    name: postsrsd
+    state: present
+    default_release: "{{ 'trixie-backports' if sovereign_debian_track == 'trixie' else omit }}"
+
+- name: Configure postsrsd
+  ansible.builtin.template:
+    src: postsrsd.conf.j2
+    dest: /etc/postsrsd.conf
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Restart postsrsd
+
+- name: Enable postsrsd
+  ansible.builtin.systemd_service:
+    name: postsrsd
+    state: started
+    enabled: true
+
+# proxymap runs as the postfix user and reads the mail database.
+- name: Allow postfix to read the mail database
+  ansible.builtin.user:
+    name: postfix
+    groups: "{{ postfix_maildb_group }}"
+    append: true
+  notify: Postfix configuration changed
+
+- name: Create the lookup table directory
+  ansible.builtin.file:
+    path: /etc/postfix/sqlite
+    state: directory
+    owner: root
+    group: postfix
+    mode: "0750"
+
+- name: Install the lookup tables
+  ansible.builtin.template:
+    src: sqlite-map.cf.j2
+    dest: "/etc/postfix/sqlite/{{ item.name }}.cf"
+    owner: root
+    group: postfix
+    mode: "0640"
+  loop: "{{ postfix_sqlite_maps }}"
+  loop_control:
+    label: "{{ item.name }}"
+  notify: Postfix configuration changed
+
+- name: Configure postfix
+  ansible.builtin.template:
+    src: main.cf.j2
+    dest: /etc/postfix/main.cf
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Postfix configuration changed
+
+# Submission (587) is added to Debian's master.cf. It runs chrooted exactly
+# when Debian's smtp service does (Debian 13: yes, Testing: no).
+- name: Read the chroot setting of Debian's smtp service
+  ansible.builtin.command:
+    argv: [postconf, -Fh, smtp/inet/chroot]
+  register: postfix_smtp_chroot
+  changed_when: false
+
+- name: Read the submission service
+  ansible.builtin.command:
+    argv: [postconf, -Mh, submission/inet]
+  register: postfix_submission_current
+  changed_when: false
+  failed_when: false
+
+- name: Add the submission service
+  ansible.builtin.command:
+    argv:
+      - postconf
+      - -M
+      - "submission/inet=submission inet n - {{ postfix_smtp_chroot.stdout }} - - smtpd"
+  when: >-
+    postfix_submission_current.stdout.split()
+    != ['submission', 'inet', 'n', '-', postfix_smtp_chroot.stdout, '-', '-', 'smtpd']
+  changed_when: true
+  notify: Postfix configuration changed
+
+- name: Read the submission service parameters
+  ansible.builtin.command:
+    argv: [postconf, -Ph, "submission/inet/{{ item.key }}"]
+  loop: "{{ postfix_submission_options | dict2items }}"
+  loop_control:
+    label: "{{ item.key }}"
+  register: postfix_submission_params
+  changed_when: false
+  failed_when: false
+
+- name: Set the submission service parameters
+  ansible.builtin.command:
+    argv: [postconf, -P, "submission/inet/{{ item.item.key }}={{ item.item.value }}"]
+  loop: "{{ postfix_submission_params.results }}"
+  loop_control:
+    label: "{{ item.item.key }}"
+  when: item.stdout != item.item.value
+  changed_when: true
+  notify: Postfix configuration changed
+
+- name: Enable postfix
+  ansible.builtin.systemd_service:
+    name: postfix
+    state: started
+    enabled: true

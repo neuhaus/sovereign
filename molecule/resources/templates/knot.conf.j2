@@ -22,6 +22,8 @@ template:
 
 zone:
   - domain: {{ sovtest_domain }}
+  # A foreign domain whose MX is a test SMTP sink on this instance (SRS test).
+  - domain: {{ sovtest_external_domain }}
 {% for zone in sovtest_signed_zones %}
   # Signed automatically (default policy: ECDSA P-256). The mail instance trusts
   # the DS of signed.test; for broken.test it gets a wrong DS on purpose.

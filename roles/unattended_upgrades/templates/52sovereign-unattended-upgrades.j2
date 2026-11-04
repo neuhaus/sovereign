@@ -5,3 +5,8 @@ Unattended-Upgrade::Remove-Unused-Kernel-Packages "{{ unattended_upgrades_remove
 Unattended-Upgrade::Remove-Unused-Dependencies "{{ unattended_upgrades_remove_unused | bool | lower }}";
 Unattended-Upgrade::Automatic-Reboot "{{ unattended_upgrades_automatic_reboot | bool | lower }}";
 Unattended-Upgrade::Automatic-Reboot-Time "{{ unattended_upgrades_automatic_reboot_time }}";
+{% if sovereign_debian_track | default("") == "trixie" %}
+// Security updates for the packages installed from trixie-backports (postsrsd).
+// Backports are pinned below stable, so nothing else is pulled from there.
+Unattended-Upgrade::Origins-Pattern:: "origin=Debian Backports,codename=${distro_codename}-backports,label=Debian Backports";
+{% endif %}

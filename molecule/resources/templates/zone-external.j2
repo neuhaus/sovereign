@@ -1,0 +1,9 @@
+; {{ ansible_managed }}
+; Foreign mail domain for the forwarding/SRS test: its MX is the dns instance,
+; where the test runs a small SMTP sink.
+$ORIGIN {{ sovtest_external_domain }}.
+$TTL 300
+@       IN SOA  ns.{{ sovtest_domain }}. hostmaster.{{ sovtest_domain }}. 1 3600 600 86400 300
+@       IN NS   ns.{{ sovtest_domain }}.
+@       IN MX   10 mx
+mx      IN A    {{ sovtest_ips.dns }}

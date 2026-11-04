@@ -1,0 +1,196 @@
+# {{ ansible_managed }}
+#
+# Complete Dovecot 2.4 configuration for Sovereign. Debian's conf.d/ is not
+# included on purpose: everything Dovecot does is defined in this file.
+dovecot_config_version = 2.4.1
+dovecot_storage_version = 2.4.1
+
+protocols {
+  imap = yes
+  lmtp = yes
+  sieve = yes
+}
+listen = {{ dovecot_listen }}
+
+# --- TLS -------------------------------------------------------------------
+# No plaintext logins: IMAP on 143 requires STARTTLS first (auth_allow_cleartext
+# = no), 993 is implicit TLS.
+ssl = required
+ssl_server_cert_file = {{ dovecot_tls_cert_file }}
+ssl_server_key_file = {{ dovecot_tls_key_file }}
+ssl_min_protocol = {{ dovecot_tls_min_protocol }}
+ssl_cipher_list = {{ dovecot_tls12_ciphers }}
+ssl_cipher_suites = {{ dovecot_tls13_ciphersuites }}
+ssl_curve_list = {{ dovecot_tls_curves }}
+
+# --- Authentication ----------------------------------------------------------
+auth_allow_cleartext = no
+auth_mechanisms = plain login
+auth_username_format = %{user | lower}
+
+sql_driver = sqlite
+sqlite_path = {{ dovecot_maildb_path }}
+
+# Main password first; on mismatch Dovecot continues with the app passwords.
+# Each passdb query returns at most one row: Dovecot 2.4 fails a lookup with
+# several rows, so app passwords are selected by their 8-character id prefix.
+passdb main {
+  driver = sql
+  sql_query = SELECT localpart || '@' || domain AS user, password \
+    FROM mailboxes \
+    WHERE localpart = '%{user | username}' AND domain = '%{user | domain}' AND enabled = 1
+}
+
+passdb apps {
+  driver = sql
+  sql_query = SELECT a.localpart || '@' || a.domain AS user, a.password \
+    FROM app_passwords a JOIN mailboxes m ON m.localpart = a.localpart AND m.domain = a.domain \
+    WHERE a.localpart = '%{user | username}' AND a.domain = '%{user | domain}' \
+      AND a.id = substr('%{password}', 1, 8) AND m.enabled = 1
+}
+
+userdb sql {
+  sql_query = SELECT localpart || '@' || domain AS user \
+    FROM mailboxes \
+    WHERE localpart = '%{user | username}' AND domain = '%{user | domain}' AND enabled = 1
+  sql_iterate_query = SELECT localpart || '@' || domain AS user FROM mailboxes WHERE enabled = 1
+}
+
+# --- Mail storage ------------------------------------------------------------
+mail_uid = {{ dovecot_vmail_user }}
+mail_gid = {{ dovecot_vmail_user }}
+mail_driver = maildir
+mail_home = {{ dovecot_vmail_dir }}/%{user | domain}/%{user | username}
+mail_path = ~/Maildir
+
+# Plus addressing: user+tag@domain is delivered to user's INBOX.
+recipient_delimiter = +
+lmtp_save_to_detail_mailbox = no
+
+namespace inbox {
+  inbox = yes
+  mailbox Drafts {
+    special_use = \Drafts
+    auto = subscribe
+  }
+  mailbox Sent {
+    special_use = \Sent
+    auto = subscribe
+  }
+  mailbox Archive {
+    special_use = \Archive
+    auto = subscribe
+  }
+  mailbox Junk {
+    special_use = \Junk
+    auto = subscribe
+    fts_autoindex = no
+  }
+  mailbox Trash {
+    special_use = \Trash
+    auto = subscribe
+    fts_autoindex = no
+  }
+}
+
+mail_plugins {
+  mail_crypt = yes
+{% if dovecot_fts_enabled %}
+  fts = yes
+  fts_flatcurve = yes
+{% endif %}
+}
+
+# --- At-rest encryption (mail_crypt, global key pair) ------------------------
+crypt_global_public_key_file = {{ dovecot_mail_crypt_dir }}/ecpubkey.pem
+crypt_global_private_key main {
+  crypt_private_key_file = {{ dovecot_mail_crypt_dir }}/ecprivkey.pem
+}
+{% if dovecot_fts_enabled %}
+
+# --- Full-text search (fts-flatcurve) ----------------------------------------
+# The index is stored unencrypted next to the mail indexes; its protection is
+# the disk encryption (LUKS).
+fts_autoindex = yes
+fts_autoindex_max_recent_msgs = 999
+fts flatcurve {
+}
+language_tokenizers = generic email-address
+language_tokenizer_generic_algorithm = simple
+language_filters = lowercase
+language en {
+  default = yes
+}
+
+service indexer-worker {
+  process_limit = {{ dovecot_fts_indexer_processes }}
+  vsz_limit = {{ dovecot_fts_indexer_memory }}
+}
+{% endif %}
+
+# --- Sieve (delivery filters, managed via ManageSieve on 4190) ---------------
+sieve_script personal {
+  driver = file
+  path = ~/sieve
+  active_path = ~/.dovecot.sieve
+}
+
+protocol lmtp {
+  mail_plugins {
+    sieve = yes
+  }
+}
+
+# --- Services ------------------------------------------------------------------
+service imap-login {
+  inet_listener imap {
+    port = 143
+  }
+  inet_listener imaps {
+    port = 993
+    ssl = yes
+  }
+}
+
+service managesieve-login {
+  inet_listener sieve {
+    port = 4190
+  }
+}
+
+# Delivery from Postfix (inside its chroot).
+service lmtp {
+  unix_listener {{ dovecot_postfix_spool }}/private/dovecot-lmtp {
+    user = postfix
+    group = postfix
+    mode = 0600
+  }
+}
+
+# SMTP AUTH for Postfix submission.
+service auth {
+  unix_listener {{ dovecot_postfix_spool }}/private/auth {
+    user = postfix
+    group = postfix
+    mode = 0660
+  }
+}
+
+# Metrics in OpenMetrics format on http://<host>:{{ dovecot_metrics_port }}/metrics.
+service stats {
+  inet_listener http {
+    port = {{ dovecot_metrics_port }}
+  }
+}
+
+metric auth_success {
+  filter = event=auth_request_finished AND success=yes
+}
+
+metric auth_failure {
+  filter = event=auth_request_finished AND NOT success=yes
+}
+
+metric mail_delivery {
+  filter = event=mail_delivery_finished
+}

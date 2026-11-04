@@ -42,6 +42,8 @@ provisioner:
       all:
         sovtest_domain: sovereign.test
         sovtest_image: images:debian/13
+        # Foreign domain served by the mock DNS; its MX is an SMTP sink on dns.
+        sovtest_external_domain: ext.test
         # DNSSEC-signed mock zones (see prepare.yml): signed.test validates,
         # broken.test gets a wrong trust anchor and must fail validation.
         sovtest_signed_zones:
@@ -68,10 +70,16 @@ provisioner:
             destinations: ["alice@{{ sovtest_domain }}"]
           - source: "team@{{ sovtest_domain }}"
             destinations: ["alice@{{ sovtest_domain }}", "bob@{{ sovtest_domain }}"]
+          # Forwarding to a foreign domain (SRS test).
+          - source: "fwd@{{ sovtest_domain }}"
+            destinations: ["someone@{{ sovtest_external_domain }}"]
         unbound_nodefault_zones:
           - test.
         unbound_stub_zones:
           - name: "{{ sovtest_domain }}"
+            addresses: ["{{ sovtest_ips.dns }}"]
+            insecure: true
+          - name: "{{ sovtest_external_domain }}"
             addresses: ["{{ sovtest_ips.dns }}"]
             insecure: true
           - name: signed.test

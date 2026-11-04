@@ -36,6 +36,15 @@
         mode: "0644"
       notify: Restart knot
 
+    - name: Deploy the external test zone
+      ansible.builtin.template:
+        src: templates/zone-external.j2
+        dest: "/var/lib/knot/{{ sovtest_external_domain }}.zone"
+        owner: knot
+        group: knot
+        mode: "0644"
+      notify: Restart knot
+
     - name: Deploy zones for the DNSSEC tests
       ansible.builtin.template:
         src: templates/zone-minimal.j2

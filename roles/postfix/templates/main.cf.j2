@@ -1,0 +1,84 @@
+# {{ ansible_managed }}
+#
+# Postfix configuration for Sovereign. master.cf stays Debian's (its chroot
+# default differs between Debian releases); the submission service is added by
+# the postfix role.
+compatibility_level = 3.6
+
+myhostname = {{ postfix_hostname }}
+myorigin = $myhostname
+mydestination = localhost
+mynetworks = 127.0.0.0/8 [::1]/128
+inet_interfaces = all
+inet_protocols = all
+smtpd_banner = $myhostname ESMTP
+biff = no
+append_dot_mydomain = no
+disable_vrfy_command = yes
+message_size_limit = {{ postfix_message_size_limit }}
+mailbox_size_limit = 0
+alias_maps = hash:/etc/aliases
+alias_database = hash:/etc/aliases
+
+# --- Virtual domains (mail database, read through proxymap) -----------------
+virtual_mailbox_domains = proxy:sqlite:/etc/postfix/sqlite/virtual-domains.cf
+virtual_mailbox_maps = proxy:sqlite:/etc/postfix/sqlite/virtual-mailboxes.cf
+# Mailboxes map to themselves first, so a catch-all alias (@domain) does not
+# swallow mail for existing mailboxes.
+virtual_alias_maps = proxy:sqlite:/etc/postfix/sqlite/virtual-mailbox-identity.cf,
+    proxy:sqlite:/etc/postfix/sqlite/virtual-aliases.cf
+virtual_transport = lmtp:unix:private/dovecot-lmtp
+# Plus addressing: user+tag@domain is delivered to user@domain.
+recipient_delimiter = +
+proxy_read_maps = $virtual_mailbox_domains $virtual_mailbox_maps $virtual_alias_maps
+    $smtpd_sender_login_maps $local_recipient_maps $alias_maps
+
+# --- Authentication (Dovecot SASL, submission only) --------------------------
+smtpd_sasl_type = dovecot
+smtpd_sasl_path = private/auth
+smtpd_sasl_auth_enable = no
+smtpd_sasl_security_options = noanonymous
+smtpd_sasl_tls_security_options = noanonymous
+# Which login may use which sender address: its own and aliases pointing to it.
+smtpd_sender_login_maps = proxy:sqlite:/etc/postfix/sqlite/sender-login.cf
+
+# --- TLS: incoming ---------------------------------------------------------------
+smtpd_tls_chain_files = {{ postfix_tls_key_file }}, {{ postfix_tls_cert_file }}
+smtpd_tls_security_level = may
+smtpd_tls_auth_only = yes
+smtpd_tls_protocols = {{ postfix_tls_protocols }}
+smtpd_tls_mandatory_protocols = {{ postfix_tls_protocols }}
+smtpd_tls_ciphers = high
+smtpd_tls_mandatory_ciphers = high
+smtpd_tls_received_header = yes
+smtpd_tls_loglevel = 1
+
+# --- TLS: outgoing, DANE verified via the local Unbound ------------------------
+smtp_dns_support_level = dnssec
+smtp_tls_security_level = dane
+smtp_tls_protocols = {{ postfix_tls_protocols }}
+smtp_tls_mandatory_protocols = {{ postfix_tls_protocols }}
+smtp_tls_ciphers = high
+smtp_tls_mandatory_ciphers = high
+smtp_tls_CAfile = /etc/ssl/certs/ca-certificates.crt
+smtp_tls_session_cache_database = btree:${data_directory}/smtp_scache
+smtp_tls_loglevel = 1
+
+# --- TLS: common -------------------------------------------------------------------
+tls_high_cipherlist = {{ postfix_tls12_ciphers }}
+tls_eecdh_auto_curves = {{ postfix_tls_curves }}
+tls_ssl_options = NO_RENEGOTIATION
+tls_preempt_cipherlist = no
+
+# --- Restrictions ------------------------------------------------------------------
+smtpd_helo_required = yes
+smtpd_relay_restrictions = permit_mynetworks, permit_sasl_authenticated, reject_unauth_destination
+smtpd_recipient_restrictions = reject_non_fqdn_recipient, reject_unknown_recipient_domain
+smtpd_sender_restrictions = reject_non_fqdn_sender
+smtpd_data_restrictions = reject_unauth_pipelining
+
+# --- Sender Rewriting Scheme (postsrsd socketmap) ----------------------------
+sender_canonical_maps = socketmap:unix:srs:forward
+sender_canonical_classes = envelope_sender
+recipient_canonical_maps = socketmap:unix:srs:reverse
+recipient_canonical_classes = envelope_recipient, header_recipient

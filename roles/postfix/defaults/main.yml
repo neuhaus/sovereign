@@ -1,0 +1,25 @@
+---
+# Host name in the SMTP banner and HELO; must match the PTR record.
+postfix_hostname: "{{ certbot_domains[0] }}"
+
+# Certificate (certbot role).
+postfix_tls_cert_name: "{{ certbot_domains[0] }}"
+postfix_tls_cert_file: "/etc/letsencrypt/live/{{ postfix_tls_cert_name }}/fullchain.pem"
+postfix_tls_key_file: "/etc/letsencrypt/live/{{ postfix_tls_cert_name }}/privkey.pem"
+
+# TLS 1.2/1.3 with ECDHE and AEAD ciphers only (BSI TR-02102-2 / TR-03108),
+# for incoming (smtpd) and outgoing (smtp) connections.
+postfix_tls_protocols: ">=TLSv1.2"
+postfix_tls12_ciphers: ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-RSA-AES128-GCM-SHA256
+postfix_tls_curves: prime256v1 secp384r1
+
+postfix_message_size_limit: 52428800  # 50 MiB
+
+# Mail database (maildb role).
+postfix_maildb_path: "{{ maildb_path | default('/var/lib/sovereign/mail.sqlite') }}"
+postfix_maildb_group: "{{ maildb_group | default('maildb') }}"
+
+# Sender Rewriting Scheme for forwarded mail (postsrsd). SRS addresses use
+# this domain, which must accept mail (bounces to forwarded messages).
+postfix_srs_domain: "{{ (mail_domains | default([]))[0] | default(postfix_hostname) }}"
+postfix_local_domains: "{{ mail_domains | default([]) }}"

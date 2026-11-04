@@ -17,6 +17,8 @@
     - role: nginx
     - role: certbot
     - role: maildb
+    - role: postfix
+    - role: dovecot
     - role: unattended_upgrades
     - role: systemd_timers
     - role: node_exporter

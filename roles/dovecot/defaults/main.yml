@@ -1,0 +1,40 @@
+---
+# Addresses Dovecot listens on (IPv4 and IPv6 wildcard by default).
+dovecot_listen: "*, ::"
+
+# Certificate (certbot role) used for IMAP and ManageSieve.
+dovecot_tls_cert_name: "{{ certbot_domains[0] }}"
+dovecot_tls_cert_file: "/etc/letsencrypt/live/{{ dovecot_tls_cert_name }}/fullchain.pem"
+dovecot_tls_key_file: "/etc/letsencrypt/live/{{ dovecot_tls_cert_name }}/privkey.pem"
+
+# TLS 1.2/1.3 with forward secrecy (ECDHE) and AEAD ciphers only, following
+# BSI TR-02102-2 as referenced by TR-03108.
+dovecot_tls_min_protocol: TLSv1.2
+dovecot_tls12_ciphers: ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-RSA-AES128-GCM-SHA256
+dovecot_tls13_ciphersuites: TLS_AES_256_GCM_SHA384:TLS_AES_128_GCM_SHA256
+dovecot_tls_curves: prime256v1:secp384r1
+
+# Mail storage: /var/vmail/<domain>/<user>/Maildir, owned by this user.
+dovecot_vmail_user: vmail
+dovecot_vmail_dir: /var/vmail
+
+# Mail database (maildb role).
+dovecot_maildb_path: "{{ maildb_path | default('/var/lib/sovereign/mail.sqlite') }}"
+dovecot_maildb_group: "{{ maildb_group | default('maildb') }}"
+
+# At-rest encryption (mail_crypt) with one global EC key pair. BACK UP the
+# private key: without it the mail cannot be read.
+dovecot_mail_crypt_dir: /etc/dovecot/mail-crypt
+
+# Full-text search (fts-flatcurve). One indexer process at a time keeps memory
+# use low on small servers.
+dovecot_fts_enabled: true
+dovecot_fts_indexer_processes: 1
+dovecot_fts_indexer_memory: 512M
+
+# Postfix integration: LMTP delivery and SASL authentication sockets.
+dovecot_postfix_spool: /var/spool/postfix
+
+# Prometheus/OpenMetrics endpoint of Dovecot's stats service. The firewall
+# opens it for `monitoring_sources` only.
+dovecot_metrics_port: 9900

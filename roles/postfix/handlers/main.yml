@@ -1,0 +1,19 @@
+---
+# Handlers run in the order they are defined: check first, then restart.
+# A restart (not a reload) also applies the new maildb group membership.
+- name: Check postfix configuration
+  ansible.builtin.command:
+    argv: [postfix, check]
+  changed_when: false
+  listen: Postfix configuration changed
+
+- name: Restart postfix
+  ansible.builtin.systemd_service:
+    name: postfix
+    state: restarted
+  listen: Postfix configuration changed
+
+- name: Restart postsrsd
+  ansible.builtin.systemd_service:
+    name: postsrsd
+    state: restarted
