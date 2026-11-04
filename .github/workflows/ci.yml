@@ -20,9 +20,9 @@ jobs:
   lint:
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
           cache: pip
@@ -49,9 +49,9 @@ jobs:
           - trixie
           - testing
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
           cache: pip
@@ -77,5 +77,25 @@ jobs:
           SCENARIO: ${{ matrix.scenario }}
           PY_COLORS: "1"
           ANSIBLE_FORCE_COLOR: "1"
-        # sg picks up the incus-admin group membership added above.
-        run: sg incus-admin -c "molecule test --scenario-name $SCENARIO"
+        # sg picks up the incus-admin group membership added above. The
+        # instances are kept on failure so the next step can inspect them.
+        run: sg incus-admin -c "molecule test --scenario-name $SCENARIO --destroy never"
+
+      - name: Show diagnostics from the test instances
+        if: failure()
+        run: |
+          for instance in $(sudo incus list --format csv --columns n); do
+            echo "::group::${instance}: failed units and their journals"
+            sudo incus exec "$instance" -- systemctl --failed --no-pager || true
+            for unit in $(sudo incus exec "$instance" -- systemctl --failed --plain --no-legend | awk '{print $1}'); do
+              sudo incus exec "$instance" -- systemctl status --no-pager --full "$unit" || true
+              sudo incus exec "$instance" -- journalctl --no-pager --boot --unit "$unit" --lines 100 || true
+            done
+            echo "::endgroup::"
+          done
+
+      - name: Destroy the test instances
+        if: always()
+        env:
+          SCENARIO: ${{ matrix.scenario }}
+        run: sg incus-admin -c "molecule destroy --scenario-name $SCENARIO"
