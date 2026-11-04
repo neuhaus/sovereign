@@ -2,12 +2,14 @@
 
 > **Work in progress:** Sovereign is being rebuilt as a mail-only server for
 > Debian 13 (Trixie) and Debian Testing. The non-mail services, EncFS, Tarsnap
-> and ufw have been removed. So far `site.yml` only sets up the base system
-> (Unbound DNSSEC resolver, nftables firewall, fail2ban, nginx and certbot for
-> the TLS certificate, unattended-upgrades, systemd timers, node exporter); the
-> mail services are being rewritten. Do not use this branch in
-> production. The rest of this README describes the old setup and will be
-> rewritten.
+> and ufw have been removed. `site.yml` sets up the base system (Unbound
+> DNSSEC resolver, nftables firewall, fail2ban, unattended-upgrades, systemd
+> timers, node exporter), the TLS certificate (nginx, certbot) and the mail
+> stack (SQLite mail database, Postfix, Dovecot 2.4, Rspamd, postsrsd,
+> MTA-STS, client autoconfiguration). Webmail, CalDAV/CardDAV and backups are
+> still missing. Do not use this branch in production yet. The rest of this
+> README describes the old setup and will be rewritten; see
+> [docs/STATUS.md](docs/STATUS.md) and [docs/PLAN.md](docs/PLAN.md).
 
 Introduction
 ============

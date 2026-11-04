@@ -4,8 +4,9 @@ Working notes for the Debian 13 / Testing rebuild of Sovereign (branch
 `trixie-wip`). Updated with every step; the commit messages have the details.
 The plan itself, with the decisions worked in, is [PLAN.md](PLAN.md).
 
-Last update: Phase 2.4 (Rspamd) and the core of 2.5 (certificates) are in;
-CI for 2.4 is being fixed (see "Open").
+Last update: Phase 2.5 complete (MTA-STS, autoconfig/autodiscover, outbound
+MTA-STS with DANE precedence), verified locally; CI confirmation for 2.4 and
+2.5 pending. Next: 2.6 (Roundcube, Radicale).
 
 ## Phases
 
@@ -17,9 +18,9 @@ CI for 2.4 is being fixed (see "Open").
 | 2.2 Unbound | done | DNSSEC-validating resolver, `trust-ad` in resolv.conf |
 | 2.5 core (moved ahead) | done | nginx (ACME on port 80), certbot with `--reuse-key` |
 | 2.3 Mail transport | done (CI green on trixie) | SQLite mail DB, Postfix, Dovecot 2.4, postsrsd |
-| 2.4 Rspamd | CI being fixed | milter, DKIM/ARC, rate limit, attachment policy, IMAPSieve learning |
-| 2.5 rest | next | MTA-STS policy, autoconfig/autodiscover, outbound MTA-STS with DANE precedence |
-| 2.6 Webmail/groupware | open | Roundcube, Radicale |
+| 2.4 Rspamd | done (CI pending) | milter, DKIM/ARC, rate limit, attachment policy, IMAPSieve learning |
+| 2.5 rest | done (CI pending) | MTA-STS policy, autoconfig/autodiscover, outbound MTA-STS with DANE precedence (`sovereign-tls-policy`) |
+| 2.6 Webmail/groupware | next | Roundcube, Radicale |
 | 2.7 Backups | open | Restic |
 | 3 GitOps admin | partly done | `maildb` already mirrors the inventory exactly (incl. removals) |
 | 4 Extended tests | open | DANE, disaster recovery, scheduled testing run |
@@ -27,8 +28,9 @@ CI for 2.4 is being fixed (see "Open").
 
 ## Roles in `site.yml` (in order)
 
-preflight, unbound, nftables, fail2ban, nginx, certbot, maildb, rspamd,
-postfix, dovecot, unattended_upgrades, systemd_timers, node_exporter.
+preflight, unbound, nftables, fail2ban, nginx, certbot, maildb, mta_sts,
+autoconfig, rspamd, postfix, dovecot, unattended_upgrades, systemd_timers,
+node_exporter.
 The legacy roles `common`, `mailserver` and `webmail` are no longer run and
 will be deleted once replaced.
 
@@ -67,13 +69,20 @@ will be deleted once replaced.
 - postsrsd via socketmap rewrites the envelope sender of all foreign mail,
   also when delivered locally (Return-Path shows the SRS address). Harmless,
   but postsrsd 2's milter mode may be more precise: to check.
+- Outbound MTA-STS: `sovereign-tls-policy` (roles/mta_sts) answers Postfix's
+  TLS policy lookups. Authenticated MX + TLSA: no entry (Postfix verifies
+  DANE); otherwise postfix-mta-sts-resolver's answer; DNS failure or resolver
+  down: TEMP (mail deferred, not sent with weaker protection).
+- nginx refuses POST to static files (405); autodiscover uses
+  `error_page 405 =200` to answer Outlook's POST with the static XML.
+- The MTA-STS policy id (`_mta-sts` TXT record) is derived from the policy
+  content and written to /var/lib/sovereign/mta-sts-id.
 - Molecule expands `$VAR` in its configuration: dollar signs in hashes are
   doubled in `.config/molecule/config.yml`; `molecule list` in CI catches it.
 
 ## Open
 
-- CI for Phase 2.4: `sievec` used the running Dovecot's (old) configuration;
-  fixed with `-c`, to be confirmed by CI.
+- CI confirmation for Phase 2.4 (`sievec -c` fix) and 2.5.
 - Password self-service (users changing their own passwords / app
   passwords) vs. Ansible as the only writer: decide before Phase 3 is closed.
 - postsrsd milter mode (see findings).

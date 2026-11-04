@@ -68,7 +68,7 @@ Strip the repository of all non-mail components to reduce maintenance overhead.
 
 Replace legacy components with modern, BSI TR-03108 compliant alternatives using native Debian 13 packages. Each step ships together with its tests. TLS everywhere: TLS 1.2/1.3, ECDHE with AES-GCM, curves P-256/P-384 (BSI TR-02102-2).
 
-Implementation order: 2.1, 2.2, the certificate part of 2.5, 2.3, 2.4, rest of 2.5, 2.6, 2.7 (Postfix and Dovecot need the certificate from the start).
+Implementation order: 2.1, 2.2, the certificate part of 2.5, 2.3, 2.4, rest of 2.5, 2.6, 2.7 (Postfix and Dovecot need the certificate from the start). Current state per phase: [STATUS.md](STATUS.md).
 
 ### 2.1 Security & Base System
 
@@ -136,7 +136,7 @@ Implementation order: 2.1, 2.2, the certificate part of 2.5, 2.3, 2.4, rest of 2
   - static `mailconfig.xml` (`.well-known/autoconfig`) and `autodiscover.xml` (`/autodiscover`) templates.
 - **Outbound MTA-STS:** postfix-mta-sts-resolver behind a small socketmap that gives **DANE precedence** (RFC 8461 section 2): if the destination's MX and TLSA records are DNSSEC-authenticated, Postfix's DANE verification applies; otherwise the MTA-STS policy is used. DNS failures and an unreachable resolver defer the mail. (The resolver alone lets MTA-STS override DANE.)
 
-**Tests:** certificate issued by Pebble and used by Nginx, Postfix and Dovecot; a forced renewal keeps the same public key and triggers the reload hook; MTA-STS policy, Autoconfig and Autodiscover files served with correct content; the resolver returns the policy for the test domain; DANE takes precedence for a domain with authenticated TLSA records, and a DNSSEC-bogus domain is deferred.
+**Tests:** certificate issued by Pebble and used by Nginx, Postfix and Dovecot; a forced renewal keeps the same public key and triggers the reload hook; MTA-STS policy, Autoconfig and Autodiscover (also via POST) served with correct content; the resolver returns the policy for the test domain; DANE takes precedence for a domain with authenticated TLSA records, and a DNSSEC-bogus domain is deferred.
 
 ### 2.6 Webmail & Groupware
 
