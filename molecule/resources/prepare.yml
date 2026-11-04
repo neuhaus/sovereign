@@ -73,7 +73,8 @@
         mode: "0755"
 
     # Pebble's own HTTPS endpoint needs a certificate. A small test CA signs it;
-    # the mail instance trusts that CA in the play below.
+    # the mail instance trusts that CA in the play below. Python >= 3.13 verifies
+    # with VERIFY_X509_STRICT, which requires the key usage extensions.
     - name: Create TLS CA for the Pebble API
       ansible.builtin.command:
         argv:
@@ -89,6 +90,8 @@
           - "3650"
           - -subj
           - /CN=Sovereign test Pebble API CA
+          - -addext
+          - keyUsage=critical,keyCertSign,cRLSign
           - -keyout
           - "{{ pebble_dir }}/api-ca.key"
           - -out
@@ -110,6 +113,10 @@
           - "/CN={{ pebble_fqdn }}"
           - -addext
           - "subjectAltName=DNS:{{ pebble_fqdn }},IP:{{ sovtest_ips.pebble }}"
+          - -addext
+          - keyUsage=critical,digitalSignature
+          - -addext
+          - extendedKeyUsage=serverAuth
           - -keyout
           - "{{ pebble_dir }}/api.key"
           - -out
