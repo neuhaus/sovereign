@@ -1,0 +1,10 @@
+# {{ ansible_managed }}
+# Outbound rate limit per authenticated user.
+rates {
+  user = {
+    bucket = {
+      burst = {{ rspamd_ratelimit_user_burst }};
+      rate = "{{ rspamd_ratelimit_user_rate }}";
+    }
+  }
+}

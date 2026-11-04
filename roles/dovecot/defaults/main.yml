@@ -32,6 +32,11 @@ dovecot_fts_enabled: true
 dovecot_fts_indexer_processes: 1
 dovecot_fts_indexer_memory: 512M
 
+# Train Rspamd when users move mail into or out of Junk (IMAPSieve).
+dovecot_spam_learning: true
+dovecot_sieve_global_dir: /etc/dovecot/sieve
+dovecot_sieve_pipe_dir: /usr/local/lib/sovereign/sieve-pipe
+
 # Postfix integration: LMTP delivery and SASL authentication sockets.
 dovecot_postfix_spool: /var/spool/postfix
 

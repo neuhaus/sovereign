@@ -22,6 +22,7 @@
   ansible.builtin.apt:
     name:
       - postfix
+      - postfix-lmdb
       - postfix-sqlite
     state: present
     update_cache: true
@@ -133,6 +134,12 @@
     label: "{{ item.item.key }}"
   when: item.stdout != item.item.value
   changed_when: true
+  notify: Postfix configuration changed
+
+- name: Build the aliases table
+  ansible.builtin.command:
+    argv: [newaliases]
+    creates: /etc/aliases.lmdb
   notify: Postfix configuration changed
 
 - name: Enable postfix

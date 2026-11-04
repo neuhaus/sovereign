@@ -1,0 +1,107 @@
+---
+- name: Install rspamd and redis
+  ansible.builtin.apt:
+    name:
+      - rspamd
+      - redis-server
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+
+# Redis keeps the Bayes statistics and rate limit buckets; cap its memory.
+- name: Limit redis memory
+  ansible.builtin.lineinfile:
+    path: /etc/redis/redis.conf
+    regexp: "^#? *{{ item.key }} "
+    line: "{{ item.key }} {{ item.value }}"
+  loop:
+    - {key: maxmemory, value: "{{ rspamd_redis_maxmemory }}"}
+    - {key: maxmemory-policy, value: volatile-ttl}
+  notify: Restart redis
+
+- name: Enable redis
+  ansible.builtin.systemd_service:
+    name: redis-server
+    state: started
+    enabled: true
+
+- name: Configure rspamd modules
+  ansible.builtin.template:
+    src: "{{ item.src }}.j2"
+    dest: "/etc/rspamd/local.d/{{ item.dest }}"
+    owner: root
+    group: root
+    mode: "0644"
+  loop:
+    - {src: redis.conf, dest: redis.conf}
+    - {src: milter_headers.conf, dest: milter_headers.conf}
+    - {src: dkim_signing.conf, dest: dkim_signing.conf}
+    # ARC signing uses the same keys and settings as DKIM signing.
+    - {src: dkim_signing.conf, dest: arc.conf}
+    - {src: ratelimit.conf, dest: ratelimit.conf}
+    - {src: mime_types.conf, dest: mime_types.conf}
+    - {src: composites.conf, dest: composites.conf}
+    - {src: classifier-bayes.conf, dest: classifier-bayes.conf}
+    - {src: antivirus.conf, dest: antivirus.conf}
+  loop_control:
+    label: "{{ item.dest }}"
+  notify: Rspamd configuration changed
+
+# Debian's controller (web UI, learning) password is "q1". Access from
+# localhost needs no password (secure_ip), which covers rspamc, Dovecot's
+# learning scripts and an SSH tunnel; replace q1 with the hash of a random
+# password that is never stored, so remote password logins are impossible.
+- name: Replace the default controller password
+  ansible.builtin.shell:
+    cmd: >-
+      set -o pipefail;
+      printf '# Managed by Ansible (rspamd role): random, unknown password.\npassword = "%s";\n'
+      "$(rspamadm pw -q -p "$(openssl rand -base64 32)")"
+      > /etc/rspamd/local.d/worker-controller.inc
+    creates: /etc/rspamd/local.d/worker-controller.inc
+    executable: /bin/bash
+  notify: Rspamd configuration changed
+
+- name: Create the DKIM key directory
+  ansible.builtin.file:
+    path: /var/lib/rspamd/dkim
+    state: directory
+    owner: root
+    group: _rspamd
+    mode: "0750"
+
+# One key per domain, generated once. The TXT record to publish is written
+# next to it (<domain>.<selector>.txt).
+- name: Generate DKIM keys
+  ansible.builtin.shell:
+    cmd: >-
+      rspamadm dkim_keygen -b {{ rspamd_dkim_key_bits }} -s {{ rspamd_dkim_selector }} -d {{ item }}
+      -k {{ item }}.{{ rspamd_dkim_selector }}.key > {{ item }}.{{ rspamd_dkim_selector }}.txt
+    chdir: /var/lib/rspamd/dkim
+    creates: "/var/lib/rspamd/dkim/{{ item }}.{{ rspamd_dkim_selector }}.key"
+  loop: "{{ rspamd_dkim_domains }}"
+
+- name: Set DKIM key permissions
+  ansible.builtin.file:
+    path: "/var/lib/rspamd/dkim/{{ item }}.{{ rspamd_dkim_selector }}.key"
+    owner: root
+    group: _rspamd
+    mode: "0640"
+  loop: "{{ rspamd_dkim_domains }}"
+
+- name: Enable rspamd
+  ansible.builtin.systemd_service:
+    name: rspamd
+    state: started
+    enabled: true
+
+# Postfix (next role) uses rspamd as milter with milter_default_action =
+# tempfail, so rspamd must be ready first.
+- name: Apply rspamd configuration
+  ansible.builtin.meta: flush_handlers
+
+- name: Wait for the rspamd milter
+  ansible.builtin.wait_for:
+    host: 127.0.0.1
+    port: 11332
+    timeout: 120

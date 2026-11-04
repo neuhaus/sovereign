@@ -1,0 +1,8 @@
+# {{ ansible_managed }}
+# Make sure every rejected extension raises MIME_BAD_EXTENSION (merged with
+# Rspamd's default list).
+bad_extensions = {
+{% for ext in rspamd_reject_extensions %}
+  {{ ext }} = 4,
+{% endfor %}
+};

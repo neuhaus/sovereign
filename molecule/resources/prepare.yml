@@ -12,7 +12,10 @@
   tasks:
     - name: Install knot
       ansible.builtin.apt:
-        name: knot
+        name:
+          - knot
+          # The mail tests run their clients here; dkimpy verifies DKIM signatures.
+          - python3-dkim
         state: present
         update_cache: true
         cache_valid_time: 3600

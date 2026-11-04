@@ -1,0 +1,46 @@
+---
+# Domains signed with DKIM/ARC (one key per domain).
+rspamd_dkim_domains: "{{ mail_domains | default([]) }}"
+# DKIM selector; publish <selector>._domainkey.<domain> TXT (see the DNS
+# records documentation). Changing it creates new keys.
+rspamd_dkim_selector: sovereign
+rspamd_dkim_key_bits: 2048
+
+# Outbound rate limit per authenticated user (token bucket): up to `burst`
+# messages at once, refilled at `rate`. Exceeding it defers (4xx).
+rspamd_ratelimit_user_burst: 100
+rspamd_ratelimit_user_rate: "100 / 1h"
+
+# Attachments that are rejected outright (also inside archives and with double
+# extensions such as invoice.pdf.exe). ClamAV needs more RAM than small
+# servers have; this policy stops most mail-borne malware at no memory cost.
+rspamd_reject_extensions:
+  - exe
+  - scr
+  - com
+  - pif
+  - bat
+  - cmd
+  - vbs
+  - vbe
+  - js
+  - jse
+  - wsf
+  - wsh
+  - hta
+  - lnk
+  - msi
+  - msp
+  - ps1
+  - jar
+  - iso
+  - img
+  - vhd
+  - dll
+  - cpl
+
+# Optional ClamAV on another host ("host:3310"); empty = no virus scanning.
+rspamd_clamav_servers: ""
+
+# Redis (Bayes statistics, rate limits). Memory cap for small servers.
+rspamd_redis_maxmemory: 256mb

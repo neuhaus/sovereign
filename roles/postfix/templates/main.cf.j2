@@ -17,8 +17,9 @@ append_dot_mydomain = no
 disable_vrfy_command = yes
 message_size_limit = {{ postfix_message_size_limit }}
 mailbox_size_limit = 0
-alias_maps = hash:/etc/aliases
-alias_database = hash:/etc/aliases
+# lmdb instead of hash/btree, which Postfix 3.11 (Debian Testing) deprecates.
+alias_maps = lmdb:/etc/aliases
+alias_database = lmdb:/etc/aliases
 
 # --- Virtual domains (mail database, read through proxymap) -----------------
 virtual_mailbox_domains = proxy:sqlite:/etc/postfix/sqlite/virtual-domains.cf
@@ -61,7 +62,7 @@ smtp_tls_mandatory_protocols = {{ postfix_tls_protocols }}
 smtp_tls_ciphers = high
 smtp_tls_mandatory_ciphers = high
 smtp_tls_CAfile = /etc/ssl/certs/ca-certificates.crt
-smtp_tls_session_cache_database = btree:${data_directory}/smtp_scache
+smtp_tls_session_cache_database = lmdb:${data_directory}/smtp_scache
 smtp_tls_loglevel = 1
 
 # --- TLS: common -------------------------------------------------------------------
@@ -76,6 +77,15 @@ smtpd_relay_restrictions = permit_mynetworks, permit_sasl_authenticated, reject_
 smtpd_recipient_restrictions = reject_non_fqdn_recipient, reject_unknown_recipient_domain
 smtpd_sender_restrictions = reject_non_fqdn_sender
 smtpd_data_restrictions = reject_unauth_pipelining
+
+# --- Milters (rspamd) --------------------------------------------------------
+{% if postfix_milters %}
+smtpd_milters = {{ postfix_milters | join(', ') }}
+non_smtpd_milters = $smtpd_milters
+milter_protocol = 6
+milter_mail_macros = i {mail_addr} {client_addr} {client_name} {auth_authen}
+milter_default_action = tempfail
+{% endif %}
 
 # --- Sender Rewriting Scheme (postsrsd socketmap) ----------------------------
 sender_canonical_maps = socketmap:unix:srs:forward

@@ -17,6 +17,7 @@
     - role: nginx
     - role: certbot
     - role: maildb
+    - role: rspamd
     - role: postfix
     - role: dovecot
     - role: unattended_upgrades

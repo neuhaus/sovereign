@@ -96,6 +96,14 @@ provisioner:
           - "mta-sts.{{ sovtest_domain }}"
           - "autoconfig.{{ sovtest_domain }}"
           - "autodiscover.{{ sovtest_domain }}"
+        # The mail tests run their clients on dns and trigger failures on purpose
+        # (wrong passwords, refused TLS versions, port probes); pebble stays
+        # bannable for the fail2ban test.
+        fail2ban_ignoreip:
+          - "{{ sovtest_ips.dns }}"
+        # bob's submissions test the outbound rate limit.
+        rspamd_ratelimit_user_burst: 10
+        rspamd_ratelimit_user_rate: "1 / 1h"
         # dns acts as the monitoring host; pebble must not reach the exporters.
         monitoring_sources:
           - "{{ sovtest_ips.dns }}"

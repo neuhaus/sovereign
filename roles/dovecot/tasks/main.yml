@@ -79,6 +79,64 @@
     validate: doveconf -n -c %s
   notify: Dovecot configuration changed
 
+- name: Set up spam learning
+  when: dovecot_spam_learning
+  block:
+    - name: Create the sieve directories
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: directory
+        owner: root
+        group: root
+        mode: "0755"
+      loop:
+        - "{{ dovecot_sieve_global_dir }}"
+        - "{{ dovecot_sieve_pipe_dir }}"
+
+    - name: Install the learning scripts
+      ansible.builtin.template:
+        src: sovereign-learn.j2
+        dest: "{{ dovecot_sieve_pipe_dir }}/{{ item.name }}"
+        owner: root
+        group: root
+        mode: "0755"
+      loop:
+        - {name: sovereign-learn-spam, command: learn_spam}
+        - {name: sovereign-learn-ham, command: learn_ham}
+      loop_control:
+        label: "{{ item.name }}"
+
+    - name: Install the IMAPSieve scripts
+      ansible.builtin.copy:
+        src: "{{ item }}"
+        dest: "{{ dovecot_sieve_global_dir }}/{{ item }}"
+        owner: root
+        group: root
+        mode: "0644"
+      loop:
+        - report-spam.sieve
+        - report-ham.sieve
+      register: dovecot_imapsieve_scripts
+
+    - name: Check the compiled IMAPSieve scripts
+      ansible.builtin.stat:
+        path: "{{ dovecot_sieve_global_dir }}/{{ item | regex_replace('[.]sieve$', '.svbin') }}"
+      loop:
+        - report-spam.sieve
+        - report-ham.sieve
+      register: dovecot_imapsieve_binaries
+
+    # Global scripts are compiled ahead of time: the mail user cannot write
+    # the binaries next to them. Needs the configuration above (pipe extension).
+    - name: Compile the IMAPSieve scripts
+      ansible.builtin.command:
+        argv: [sievec, "{{ item.0.dest }}"]
+      loop: "{{ dovecot_imapsieve_scripts.results | zip(dovecot_imapsieve_binaries.results) | list }}"
+      loop_control:
+        label: "{{ item.0.item }}"
+      when: item.0.changed or not item.1.stat.exists
+      changed_when: true
+
 # Dovecot opens its listeners itself (including 4190 and the metrics port);
 # Debian's activation socket would hold 143/993 in parallel.
 - name: Disable the dovecot activation socket

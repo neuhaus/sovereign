@@ -96,6 +96,7 @@ jobs:
               sudo incus exec "$instance" -- systemctl status --no-pager --full "$unit" || true
               sudo incus exec "$instance" -- journalctl --no-pager --boot --unit "$unit" --lines 100 || true
             done
+            sudo incus exec "$instance" -- sh -c 'command -v fail2ban-client >/dev/null && fail2ban-client banned' || true
             echo "::endgroup::"
           done
 

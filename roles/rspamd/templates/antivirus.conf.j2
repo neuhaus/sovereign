@@ -1,0 +1,11 @@
+# {{ ansible_managed }}
+{% if rspamd_clamav_servers %}
+# ClamAV on another host.
+clamav {
+  type = "clamav";
+  servers = "{{ rspamd_clamav_servers }}";
+  action = "reject";
+  scan_mime_parts = true;
+  log_clean = false;
+}
+{% endif %}

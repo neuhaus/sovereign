@@ -1,6 +1,10 @@
 -- Sovereign mail database (SQLite), schema version 1.
--- Managed by Ansible (maildb role). Applied on every run; must stay idempotent.
+-- Managed by Ansible (maildb role). Applied when the database is created and
+-- whenever this file changes; must stay idempotent.
 PRAGMA foreign_keys = ON;
+-- Rollback journal, not WAL: the readers (Postfix, Dovecot) cannot write the
+-- -shm file that WAL needs. Also converts a database already switched to WAL.
+PRAGMA journal_mode = DELETE;
 
 CREATE TABLE IF NOT EXISTS domains (
     name TEXT PRIMARY KEY

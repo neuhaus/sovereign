@@ -1,0 +1,11 @@
+# {{ ansible_managed }}
+# Sign mail from authenticated users and local senders for our domains with
+# /var/lib/rspamd/dkim/<domain>.<selector>.key (also used for ARC).
+path = "/var/lib/rspamd/dkim/$domain.$selector.key";
+selector = "{{ rspamd_dkim_selector }}";
+sign_authenticated = true;
+sign_local = true;
+use_domain = "header";
+# Aliases may send as addresses that are not the login name.
+allow_username_mismatch = true;
+allow_hdrfrom_mismatch = false;

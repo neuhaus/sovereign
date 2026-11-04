@@ -30,6 +30,10 @@ auth_username_format = %{user | lower}
 
 sql_driver = sqlite
 sqlite_path = {{ dovecot_maildb_path }}
+# Dovecot only reads the mail database. Its defaults (read-write, WAL) would
+# switch the database to WAL, after which Postfix cannot read it any more.
+sqlite_readonly = yes
+sqlite_journal_mode = delete
 
 # Main password first; on mismatch Dovecot continues with the app passwords.
 # Each passdb query returns at most one row: Dovecot 2.4 fails a lookup with
@@ -85,6 +89,14 @@ namespace inbox {
     special_use = \Junk
     auto = subscribe
     fts_autoindex = no
+{% if dovecot_spam_learning %}
+    # Moving mail into Junk trains it as spam (Rspamd).
+    sieve_script report_spam {
+      type = before
+      cause = copy
+      path = {{ dovecot_sieve_global_dir }}/report-spam.sieve
+    }
+{% endif %}
   }
   mailbox Trash {
     special_use = \Trash
@@ -140,6 +152,31 @@ protocol lmtp {
     sieve = yes
   }
 }
+{% if dovecot_spam_learning %}
+
+# Spam learning: moving mail out of Junk trains it as ham (see also the Junk
+# mailbox above). The scripts pipe the message to Rspamd.
+protocol imap {
+  mail_plugins {
+    imap_sieve = yes
+  }
+}
+sieve_plugins {
+  sieve_imapsieve = yes
+  sieve_extprograms = yes
+}
+sieve_global_extensions {
+  vnd.dovecot.pipe = yes
+}
+sieve_pipe_bin_dir = {{ dovecot_sieve_pipe_dir }}
+imapsieve_from Junk {
+  sieve_script report_ham {
+    type = before
+    cause = copy
+    path = {{ dovecot_sieve_global_dir }}/report-ham.sieve
+  }
+}
+{% endif %}
 
 # --- Services ------------------------------------------------------------------
 service imap-login {

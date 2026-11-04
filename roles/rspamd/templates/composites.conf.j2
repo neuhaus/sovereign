@@ -1,0 +1,12 @@
+# {{ ansible_managed }}
+# A dangerous attachment: one of rspamd_reject_extensions (directly or inside
+# an archive), a double extension (invoice.pdf.exe) or an executable in a
+# split RAR. The score is far above the reject threshold (15), so the message
+# is rejected. (force_actions cannot depend on a composite, and a symbol
+# option list "[a,b]" only matches when all options are present, hence the
+# regular expression.)
+SOVEREIGN_DANGEROUS_ATTACHMENT {
+  expression = "MIME_BAD_EXTENSION[/^({{ rspamd_reject_extensions | join('|') }})$/] | MIME_DOUBLE_BAD_EXTENSION | MIME_EXE_IN_GEN_SPLIT_RAR";
+  score = 50.0;
+  description = "Attachment type that Sovereign rejects (executable or script)";
+}

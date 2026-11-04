@@ -1,0 +1,6 @@
+# {{ ansible_managed }}
+# Headers added to scanned mail. Authenticated (outgoing) mail gets none, so
+# no internal scan details leave the server.
+use = ["authentication-results", "x-spamd-result", "x-rspamd-queue-id", "x-spam-status"];
+skip_local = false;
+skip_authenticated = true;
