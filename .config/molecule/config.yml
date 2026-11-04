@@ -48,6 +48,24 @@ provisioner:
           - signed.test
           - broken.test
       mailservers:
+        # Test accounts. Passwords (test only): alice "sovtest-alice-pass",
+        # alice's app password "AlicPhn1-sovtest-app-phone", bob "sovtest-bob-pass".
+        mail_domains:
+          - "{{ sovtest_domain }}"
+        mail_mailboxes:
+          - address: "alice@{{ sovtest_domain }}"
+            password: "{ARGON2ID}$argon2id$v=19$m=65536,t=3,p=1$hzBIYixDZWHOAU73APqNgg$wgY6noKJaN1gGyyiThFkC5vOR6BzcQg1XYdl8u9YrmE"
+            app_passwords:
+              - name: phone
+                id: AlicPhn1
+                password: "{ARGON2ID}$argon2id$v=19$m=65536,t=3,p=1$sjSnTepvTiaLdWZ96rsYPg$RNGsSHThLFD9eEA4WzbnBnou69e+R0MuVfr43TFkbAk"
+          - address: "bob@{{ sovtest_domain }}"
+            password: "{ARGON2ID}$argon2id$v=19$m=65536,t=3,p=1$uuSbK3yYxUdFBwxKdgH2SQ$btDjUirMAqWOiBTzd+2FkQS15ap9gTR/X7LwgDYTuzA"
+        mail_aliases:
+          - source: "postmaster@{{ sovtest_domain }}"
+            destinations: ["alice@{{ sovtest_domain }}"]
+          - source: "team@{{ sovtest_domain }}"
+            destinations: ["alice@{{ sovtest_domain }}", "bob@{{ sovtest_domain }}"]
         unbound_nodefault_zones:
           - test.
         unbound_stub_zones:

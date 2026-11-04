@@ -1,0 +1,16 @@
+{% set rows = [] %}
+{% for domain in maildb_domains %}
+{% set _ = rows.append('domain|' ~ domain) %}
+{% endfor %}
+{% for mailbox in maildb_mailboxes %}
+{% set _ = rows.append('mailbox|' ~ mailbox.address ~ '|' ~ mailbox.password ~ '|' ~ (mailbox.quota_mb | default(0) | int) ~ '|' ~ (1 if mailbox.enabled | default(true) | bool else 0)) %}
+{% for app in mailbox.app_passwords | default([]) %}
+{% set _ = rows.append('app|' ~ mailbox.address ~ '|' ~ app.id ~ '|' ~ app.name ~ '|' ~ app.password) %}
+{% endfor %}
+{% endfor %}
+{% for alias in maildb_aliases %}
+{% for destination in alias.destinations %}
+{% set _ = rows.append('alias|' ~ alias.source ~ '|' ~ destination) %}
+{% endfor %}
+{% endfor %}
+{{ rows | sort | join('\n') }}

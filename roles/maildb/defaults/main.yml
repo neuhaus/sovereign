@@ -1,0 +1,33 @@
+---
+# The mail database mirrors these inventory variables exactly: entries that
+# are no longer listed are removed. Set them in group_vars/mailservers.yml.
+#
+#   mail_domains:
+#     - example.org
+#
+#   mail_mailboxes:
+#     - address: alice@example.org
+#       # doveadm pw -s ARGON2ID (Argon2id hashes only)
+#       password: "{ARGON2ID}$argon2id$v=19$m=65536,t=3,p=1$..."
+#       quota_mb: 0          # optional, 0 = unlimited
+#       enabled: true        # optional; disabled mailboxes cannot log in
+#                            # and receive no mail
+#       app_passwords:       # optional
+#         # An app password starts with its 8-character id (letters and
+#         # digits), e.g. "PhOnE001-...". The hash covers the whole password.
+#         - name: phone
+#           id: PhOnE001
+#           password: "{ARGON2ID}$argon2id$..."
+#
+#   mail_aliases:
+#     - source: postmaster@example.org
+#       destinations: [alice@example.org]
+maildb_domains: "{{ mail_domains | default([]) }}"
+maildb_mailboxes: "{{ mail_mailboxes | default([]) }}"
+maildb_aliases: "{{ mail_aliases | default([]) }}"
+
+maildb_dir: /var/lib/sovereign
+maildb_path: "{{ maildb_dir }}/mail.sqlite"
+
+# Group that may read the database (dovecot and postfix are added to it).
+maildb_group: maildb

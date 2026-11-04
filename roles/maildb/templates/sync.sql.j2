@@ -1,0 +1,26 @@
+-- {{ ansible_managed }}
+-- Replaces the content of the mail database with the inventory state in one
+-- transaction; readers see either the old or the new state.
+{% macro q(value) %}'{{ value | string | replace("'", "''") }}'{% endmacro %}
+PRAGMA foreign_keys = ON;
+BEGIN IMMEDIATE;
+DELETE FROM aliases;
+DELETE FROM app_passwords;
+DELETE FROM mailboxes;
+DELETE FROM domains;
+{% for domain in maildb_domains | sort %}
+INSERT INTO domains (name) VALUES ({{ q(domain) }});
+{% endfor %}
+{% for mailbox in maildb_mailboxes | sort(attribute='address') %}
+{% set localpart, domain = mailbox.address.split('@') %}
+INSERT INTO mailboxes (localpart, domain, password, quota_mb, enabled) VALUES ({{ q(localpart) }}, {{ q(domain) }}, {{ q(mailbox.password) }}, {{ mailbox.quota_mb | default(0) | int }}, {{ 1 if mailbox.enabled | default(true) | bool else 0 }});
+{% for app in mailbox.app_passwords | default([]) | sort(attribute='id') %}
+INSERT INTO app_passwords (localpart, domain, id, name, password) VALUES ({{ q(localpart) }}, {{ q(domain) }}, {{ q(app.id) }}, {{ q(app.name) }}, {{ q(app.password) }});
+{% endfor %}
+{% endfor %}
+{% for alias in maildb_aliases | sort(attribute='source') %}
+{% for destination in alias.destinations | sort %}
+INSERT INTO aliases (source, destination) VALUES ({{ q(alias.source) }}, {{ q(destination) }});
+{% endfor %}
+{% endfor %}
+COMMIT;

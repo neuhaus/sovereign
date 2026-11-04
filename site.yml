@@ -16,6 +16,7 @@
     - role: fail2ban
     - role: nginx
     - role: certbot
+    - role: maildb
     - role: unattended_upgrades
     - role: systemd_timers
     - role: node_exporter

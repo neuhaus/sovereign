@@ -1,0 +1,123 @@
+---
+- name: Assert valid mail domains
+  ansible.builtin.assert:
+    that:
+      - item is string
+      - item == item | lower
+      - item is match('^[a-z0-9]([a-z0-9-]*[a-z0-9])?([.][a-z0-9]([a-z0-9-]*[a-z0-9])?)+$')
+    fail_msg: "Invalid entry in mail_domains (lower-case domain name expected): {{ item }}"
+    quiet: true
+  loop: "{{ maildb_domains }}"
+
+- name: Assert valid mailboxes
+  ansible.builtin.assert:
+    that:
+      - item.address is match('^[a-z0-9._-]+@[a-z0-9.-]+$')
+      - item.address.split('@')[1] in maildb_domains
+      - item.password is match('^[{]ARGON2ID[}][$]argon2id[$]')
+      - (item.app_passwords | default([]) | map(attribute='id') | select('match', '^[A-Za-z0-9]{8}$') | list | length)
+        == (item.app_passwords | default([]) | length)
+      - (item.app_passwords | default([]) | map(attribute='password') | select('match', '^[{]ARGON2ID[}][$]argon2id[$]') | list | length)
+        == (item.app_passwords | default([]) | length)
+      - (item.app_passwords | default([]) | map(attribute='id') | unique | list | length)
+        == (item.app_passwords | default([]) | length)
+    fail_msg: >-
+      Invalid mailbox {{ item.address | default('?') }}: lower-case address in one of mail_domains,
+      Argon2id hashes ({ARGON2ID}$argon2id$...), unique 8-character app password ids.
+    quiet: true
+  loop: "{{ maildb_mailboxes }}"
+  loop_control:
+    label: "{{ item.address | default('?') }}"
+  no_log: true
+
+- name: Assert unique mailbox addresses
+  ansible.builtin.assert:
+    that:
+      - (maildb_mailboxes | map(attribute='address') | unique | list | length) == (maildb_mailboxes | length)
+    fail_msg: mail_mailboxes contains the same address more than once.
+    quiet: true
+
+- name: Assert valid aliases
+  ansible.builtin.assert:
+    that:
+      - item.source is match('^[a-z0-9._+-]*@[a-z0-9.-]+$')
+      - item.source.split('@')[1] in maildb_domains
+      - item.destinations | length > 0
+    fail_msg: "Invalid alias {{ item.source | default('?') }}: source in one of mail_domains, at least one destination."
+    quiet: true
+  loop: "{{ maildb_aliases }}"
+  loop_control:
+    label: "{{ item.source | default('?') }}"
+
+- name: Install sqlite3
+  ansible.builtin.apt:
+    name: sqlite3
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+
+- name: Create the mail database group
+  ansible.builtin.group:
+    name: "{{ maildb_group }}"
+    system: true
+
+- name: Create the mail database directory
+  ansible.builtin.file:
+    path: "{{ maildb_dir }}"
+    state: directory
+    owner: root
+    group: "{{ maildb_group }}"
+    mode: "0750"
+
+- name: Install the schema and export queries
+  ansible.builtin.copy:
+    src: "{{ item }}"
+    dest: "{{ maildb_dir }}/{{ item }}"
+    owner: root
+    group: root
+    mode: "0644"
+  loop:
+    - schema.sql
+    - export.sql
+  register: maildb_sql_files
+
+- name: Check for the mail database
+  ansible.builtin.stat:
+    path: "{{ maildb_path }}"
+  register: maildb_file
+
+- name: Create or update the schema
+  ansible.builtin.command:
+    argv: [sqlite3, -bail, "{{ maildb_path }}", ".read {{ maildb_dir }}/schema.sql"]
+  when: not maildb_file.stat.exists or maildb_sql_files.results[0].changed
+  changed_when: true
+
+- name: Set mail database permissions
+  ansible.builtin.file:
+    path: "{{ maildb_path }}"
+    owner: root
+    group: "{{ maildb_group }}"
+    mode: "0640"
+
+- name: Read the current content
+  ansible.builtin.command:
+    argv: [sqlite3, -batch, -noheader, "{{ maildb_path }}", ".read {{ maildb_dir }}/export.sql"]
+  register: maildb_current
+  changed_when: false
+  no_log: true
+
+# The synchronisation script contains password hashes: root only.
+- name: Render the synchronisation script
+  ansible.builtin.template:
+    src: sync.sql.j2
+    dest: "{{ maildb_dir }}/sync.sql"
+    owner: root
+    group: root
+    mode: "0600"
+  no_log: true
+
+- name: Synchronise the mail database with the inventory
+  ansible.builtin.command:
+    argv: [sqlite3, -bail, "{{ maildb_path }}", ".read {{ maildb_dir }}/sync.sql"]
+  when: maildb_current.stdout | trim != lookup('ansible.builtin.template', 'export.txt.j2') | trim
+  changed_when: true
