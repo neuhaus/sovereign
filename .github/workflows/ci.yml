@@ -39,6 +39,11 @@ jobs:
       - name: ansible-lint
         run: ansible-lint
 
+      # Loads every scenario including Molecule's environment interpolation
+      # (a stray "$" in molecule.yml/config.yml breaks it), without incus.
+      - name: Molecule configuration
+        run: molecule list
+
   molecule:
     needs: lint
     runs-on: ubuntu-24.04
