@@ -4,9 +4,8 @@ Working notes for the Debian 13 / Testing rebuild of Sovereign (branch
 `trixie-wip`). Updated with every step; the commit messages have the details.
 The plan itself, with the decisions worked in, is [PLAN.md](PLAN.md).
 
-Last update: Phase 2.5 complete (MTA-STS, autoconfig/autodiscover, outbound
-MTA-STS with DANE precedence), verified locally; CI confirmation for 2.4 and
-2.5 pending. Next: 2.6 (Roundcube, Radicale).
+Last update: Phases 2.1-2.5 complete; CI green on Debian 13 and Testing
+(146 tests each, converge and idempotence). Next: 2.6 (Roundcube, Radicale).
 
 ## Phases
 
@@ -17,9 +16,9 @@ MTA-STS with DANE precedence), verified locally; CI confirmation for 2.4 and
 | 2.1 Base system | done | nftables, fail2ban (journald), unattended-upgrades, systemd timers, node exporter |
 | 2.2 Unbound | done | DNSSEC-validating resolver, `trust-ad` in resolv.conf |
 | 2.5 core (moved ahead) | done | nginx (ACME on port 80), certbot with `--reuse-key` |
-| 2.3 Mail transport | done (CI green on trixie) | SQLite mail DB, Postfix, Dovecot 2.4, postsrsd |
-| 2.4 Rspamd | done (CI pending) | milter, DKIM/ARC, rate limit, attachment policy, IMAPSieve learning |
-| 2.5 rest | done (CI pending) | MTA-STS policy, autoconfig/autodiscover, outbound MTA-STS with DANE precedence (`sovereign-tls-policy`) |
+| 2.3 Mail transport | done | SQLite mail DB, Postfix, Dovecot 2.4, postsrsd |
+| 2.4 Rspamd | done | milter, DKIM/ARC, rate limit, attachment policy, IMAPSieve learning |
+| 2.5 rest | done | MTA-STS policy, autoconfig/autodiscover, outbound MTA-STS with DANE precedence (`sovereign-tls-policy`) |
 | 2.6 Webmail/groupware | next | Roundcube, Radicale |
 | 2.7 Backups | open | Restic |
 | 3 GitOps admin | partly done | `maildb` already mirrors the inventory exactly (incl. removals) |
@@ -86,7 +85,6 @@ will be deleted once replaced.
 
 ## Open
 
-- CI confirmation for Phase 2.4 (`sievec -c` fix) and 2.5.
 - Password self-service (users changing their own passwords / app
   passwords) vs. Ansible as the only writer: decide before Phase 3 is closed.
 - postsrsd milter mode (see findings).
