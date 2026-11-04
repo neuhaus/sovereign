@@ -31,25 +31,42 @@ def test_fail2ban_sshd_jail_reads_journal(host):
     assert "sshd-session" in status
 
 
+def test_fail2ban_sshd_filter_counts_penalty_drops(host):
+    line = (
+        "Nov  4 10:00:03 mail sshd[1]: drop connection #0 from [192.0.2.9]:44884 "
+        "on [192.0.2.1]:22 penalty: attempted authentication by invalid user"
+    )
+    result = host.check_output(
+        "fail2ban-regex %s /etc/fail2ban/filter.d/sshd.conf", line
+    )
+    assert "1 matched" in result
+
+
 def test_fail2ban_bans_ssh_attacker_via_nftables(host, sovtest_vars, peer):
     mail_ip = sovtest_vars["sovtest_ips"]["mail"]
     attacker_ip = sovtest_vars["sovtest_ips"]["pebble"]
     attacker = peer("pebble")
+    def banned():
+        return attacker_ip in host.check_output("fail2ban-client get sshd banip").split()
+
     try:
-        for _ in range(sovtest_vars.get("fail2ban_maxretry", 5) + 1):
+        # Keep trying like an attacker would. OpenSSH >= 10.1 throttles the
+        # source itself after a few attempts and only logs "drop connection
+        # ... penalty"; the role's sshd.local filter counts those as well.
+        for _ in range(12):
             attacker.run(
                 "ssh -o BatchMode=yes -o ConnectTimeout=5 -o StrictHostKeyChecking=no "
                 "-o UserKnownHostsFile=/dev/null sovereign-nosuchuser@%s true",
                 mail_ip,
             )
-
-        banned = ""
-        for _ in range(30):
-            banned = host.check_output("fail2ban-client get sshd banip")
-            if attacker_ip in banned.split():
+            time.sleep(1)
+            if banned():
+                break
+        for _ in range(15):
+            if banned():
                 break
             time.sleep(1)
-        assert attacker_ip in banned.split(), host.check_output("fail2ban-client status sshd")
+        assert banned(), host.check_output("fail2ban-client status sshd")
 
         # The ban is enforced in fail2ban's own nftables table ...
         assert attacker_ip in host.check_output("nft list ruleset")

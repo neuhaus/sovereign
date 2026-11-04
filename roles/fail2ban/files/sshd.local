@@ -1,0 +1,9 @@
+# Managed by Ansible (Sovereign fail2ban role).
+#
+# OpenSSH >= 10.1 penalises misbehaving sources (PerSourcePenalties) and then
+# only logs "drop connection ... penalty: ..." for further attempts, which the
+# stock filter ignores. Count those drops as failures too, so fail2ban still
+# bans sources that sshd throttles. %(known/failregex)s keeps the stock rules.
+[Definition]
+failregex = %(known/failregex)s
+            ^drop connection #\d+ from \[<HOST>\]:\d+ on \S+ penalty: .+$
