@@ -1,0 +1,14 @@
+---
+# Scheduled jobs as systemd timers (Sovereign has no cron). Each entry becomes
+# sovereign-<name>.service and sovereign-<name>.timer. Timers that are no longer
+# listed here are stopped and removed.
+#
+#   systemd_timers_jobs:
+#     - name: example            # [a-z0-9-]+
+#       description: Example job
+#       command: /usr/local/bin/example --flag
+#       on_calendar: daily       # systemd.time(7) calendar expression
+#       user: root               # optional, default root
+#       randomized_delay: 30m    # optional, default 0
+#       persistent: true         # optional, default true: catch up missed runs
+systemd_timers_jobs: []

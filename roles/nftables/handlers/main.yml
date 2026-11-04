@@ -1,0 +1,15 @@
+---
+# Handlers run in the order they are defined: check first, then reload.
+# nftables.service reloads with "nft -f /etc/nftables.conf", which replaces the
+# sovereign table atomically and keeps other tables (fail2ban) in place.
+- name: Check nftables configuration
+  ansible.builtin.command:
+    argv: [nft, --check, --file, /etc/nftables.conf]
+  changed_when: false
+  listen: Nftables configuration changed
+
+- name: Reload nftables
+  ansible.builtin.systemd_service:
+    name: nftables
+    state: reloaded
+  listen: Nftables configuration changed

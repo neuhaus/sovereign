@@ -1,13 +1,18 @@
 ---
-# This is the top-level playbook that defines our entire infrastructure.
+# Top-level playbook: configures every host in the `mailservers` group.
+#
+# Roles are added here as they are rewritten for Debian 13 / Testing (see the
+# modernization plan). The legacy roles common, mailserver and webmail are not
+# run any more; they are replaced step by step in Phase 2.
 
-- hosts: all
-  user: deploy
-  become: True
-  gather_facts: True
-
+- name: Configure Sovereign mail servers
+  hosts: mailservers
+  become: true
+  gather_facts: true
   roles:
-    - preflight
-    - common
-    - mailserver
-    - webmail
+    - role: preflight
+    - role: nftables
+    - role: fail2ban
+    - role: unattended_upgrades
+    - role: systemd_timers
+    - role: node_exporter

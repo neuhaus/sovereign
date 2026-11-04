@@ -1,0 +1,46 @@
+#!/usr/sbin/nft -f
+# {{ ansible_managed }}
+#
+# Only the "sovereign" table is replaced on reload. Tables of other tools, such
+# as fail2ban's, are left alone, which "flush ruleset" would not do.
+{% set v4_sources = nftables_monitoring_sources | reject('search', ':') | list %}
+{% set v6_sources = nftables_monitoring_sources | select('search', ':') | list %}
+
+table inet sovereign
+delete table inet sovereign
+
+table inet sovereign {
+    chain input {
+        type filter hook input priority filter; policy drop;
+
+        ct state established,related accept
+        ct state invalid drop
+        iifname "lo" accept
+
+        # ICMP is needed for path MTU discovery and, on IPv6, neighbour discovery.
+        meta l4proto { icmp, ipv6-icmp } accept
+
+        # DHCP replies are not matched by connection tracking.
+        udp sport 67 udp dport 68 accept
+        udp sport 547 udp dport 546 accept
+
+        tcp dport { {{ nftables_open_tcp_ports | join(', ') }} } accept
+{% if nftables_monitoring_tcp_ports %}
+{% if v4_sources %}
+
+        ip saddr { {{ v4_sources | join(', ') }} } tcp dport { {{ nftables_monitoring_tcp_ports | join(', ') }} } accept
+{% endif %}
+{% if v6_sources %}
+        ip6 saddr { {{ v6_sources | join(', ') }} } tcp dport { {{ nftables_monitoring_tcp_ports | join(', ') }} } accept
+{% endif %}
+{% endif %}
+    }
+
+    chain forward {
+        type filter hook forward priority filter; policy drop;
+    }
+
+    chain output {
+        type filter hook output priority filter; policy accept;
+    }
+}

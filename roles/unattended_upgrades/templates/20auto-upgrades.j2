@@ -1,0 +1,5 @@
+// {{ ansible_managed }}
+// Refresh package lists and run unattended-upgrade daily, driven by
+// apt-daily.timer and apt-daily-upgrade.timer.
+APT::Periodic::Update-Package-Lists "1";
+APT::Periodic::Unattended-Upgrade "1";

@@ -1,0 +1,27 @@
+---
+- name: Install fail2ban
+  ansible.builtin.apt:
+    name:
+      - fail2ban
+      # Required by the systemd (journald) backend.
+      - python3-systemd
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+
+# jail.d/*.local is read after Debian's jail.d/defaults-debian.conf and
+# overrides it.
+- name: Configure fail2ban jails
+  ansible.builtin.template:
+    src: sovereign.local.j2
+    dest: /etc/fail2ban/jail.d/sovereign.local
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Fail2ban configuration changed
+
+- name: Enable fail2ban
+  ansible.builtin.systemd_service:
+    name: fail2ban
+    state: started
+    enabled: true

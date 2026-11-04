@@ -60,6 +60,8 @@
         name:
           - pebble
           - openssl
+          # SSH client for the fail2ban test (pebble plays the attacker).
+          - openssh-client
         state: present
         update_cache: true
         cache_valid_time: 3600
@@ -222,6 +224,10 @@
           - ca-certificates
           - curl
           - knot-dnsutils
+          # Present on every real server: site.yml uses become, and fail2ban's
+          # sshd jail is tested against a running sshd.
+          - openssh-server
+          - sudo
         state: present
         update_cache: true
         cache_valid_time: 3600

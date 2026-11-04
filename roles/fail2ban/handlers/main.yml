@@ -1,0 +1,14 @@
+---
+# Handlers run in the order they are defined: check first, then reload.
+# A reload keeps existing bans.
+- name: Check fail2ban configuration
+  ansible.builtin.command:
+    argv: [fail2ban-client, --test]
+  changed_when: false
+  listen: Fail2ban configuration changed
+
+- name: Reload fail2ban
+  ansible.builtin.systemd_service:
+    name: fail2ban
+    state: reloaded
+  listen: Fail2ban configuration changed

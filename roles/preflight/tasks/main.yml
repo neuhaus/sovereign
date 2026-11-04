@@ -27,10 +27,7 @@
   ansible.builtin.set_fact:
     sovereign_debian_track: >-
       {%- set version = preflight_debian_version.content | b64decode | trim -%}
-      {%- if version is match('^13([.]|$)') -%}trixie
-      {%- elif version is search('/sid$') -%}testing
-      {%- else -%}unsupported
-      {%- endif -%}
+      {%- if version is match('^13([.]|$)') -%}trixie{%- elif version is search('/sid$') -%}testing{%- else -%}unsupported{%- endif -%}
 
 - name: Assert supported Debian track
   ansible.builtin.assert:

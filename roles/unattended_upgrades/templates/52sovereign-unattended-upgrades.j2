@@ -1,0 +1,7 @@
+// {{ ansible_managed }}
+// Overrides for Debian's 50unattended-upgrades, whose default origins
+// (the Debian security archive of the running release) are kept.
+Unattended-Upgrade::Remove-Unused-Kernel-Packages "{{ unattended_upgrades_remove_unused | bool | lower }}";
+Unattended-Upgrade::Remove-Unused-Dependencies "{{ unattended_upgrades_remove_unused | bool | lower }}";
+Unattended-Upgrade::Automatic-Reboot "{{ unattended_upgrades_automatic_reboot | bool | lower }}";
+Unattended-Upgrade::Automatic-Reboot-Time "{{ unattended_upgrades_automatic_reboot_time }}";

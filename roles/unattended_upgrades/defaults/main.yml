@@ -1,0 +1,9 @@
+---
+# Reboot automatically when an upgrade requires it (e.g. a new kernel), at the
+# given time. Off by default: a reboot of an encrypted server needs a remote
+# unlock (see the LUKS/dropbear documentation).
+unattended_upgrades_automatic_reboot: false
+unattended_upgrades_automatic_reboot_time: "04:00"
+
+# Remove kernels and dependencies that are no longer needed.
+unattended_upgrades_remove_unused: true

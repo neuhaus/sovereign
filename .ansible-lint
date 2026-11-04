@@ -5,8 +5,6 @@ exclude_paths:
   # Legacy Sovereign code. These paths are deleted in Phase 1 or rewritten in
   # Phase 2 of the modernization plan; remove each entry as soon as the path is
   # gone or has been rewritten in the new style.
-  - site.yml
-  - hosts
   - group_vars/
   - roles/common/
   - roles/mailserver/

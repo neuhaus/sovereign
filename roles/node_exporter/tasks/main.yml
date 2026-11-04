@@ -1,0 +1,25 @@
+---
+# Without recommends: prometheus-node-exporter-collectors adds timers for
+# hardware collectors (smartmon, nvme, ...) that fail on many hosts.
+- name: Install prometheus-node-exporter
+  ansible.builtin.apt:
+    name: prometheus-node-exporter
+    state: present
+    install_recommends: false
+    update_cache: true
+    cache_valid_time: 3600
+
+- name: Configure prometheus-node-exporter
+  ansible.builtin.template:
+    src: prometheus-node-exporter.j2
+    dest: /etc/default/prometheus-node-exporter
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Node exporter configuration changed
+
+- name: Enable prometheus-node-exporter
+  ansible.builtin.systemd_service:
+    name: prometheus-node-exporter
+    state: started
+    enabled: true

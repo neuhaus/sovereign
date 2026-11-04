@@ -1,0 +1,18 @@
+# {{ ansible_managed }}
+
+[DEFAULT]
+backend = systemd
+banaction = nftables
+banaction_allports = nftables[type=allports]
+bantime = {{ fail2ban_bantime }}
+findtime = {{ fail2ban_findtime }}
+maxretry = {{ fail2ban_maxretry }}
+ignoreip = {{ (['127.0.0.1/8', '::1'] + fail2ban_ignoreip) | join(' ') }}
+{% for jail, settings in fail2ban_jails | dictsort %}
+
+[{{ jail }}]
+enabled = true
+{% for key, value in (settings | default({}, true)) | dictsort %}
+{{ key }} = {{ value }}
+{% endfor %}
+{% endfor %}

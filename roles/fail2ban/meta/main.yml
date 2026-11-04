@@ -1,0 +1,12 @@
+---
+galaxy_info:
+  role_name: fail2ban
+  author: Sovereign contributors
+  description: Fail2ban reading from journald, banning via nftables
+  license: GPL-3.0-or-later
+  min_ansible_version: "2.15"
+  platforms:
+    - name: Debian
+      versions:
+        - trixie
+dependencies: []

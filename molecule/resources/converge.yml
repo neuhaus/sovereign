@@ -1,9 +1,4 @@
 ---
-# Phase 0: only the preflight role. Once Phase 1 has removed the legacy roles,
-# this becomes `ansible.builtin.import_playbook: ../../site.yml` so the tests
-# always exercise the real playbook.
+# Converge runs the real playbook, so the tests always exercise site.yml.
 - name: Converge
-  hosts: mailservers
-  gather_facts: true
-  roles:
-    - role: preflight
+  ansible.builtin.import_playbook: ../../site.yml

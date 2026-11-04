@@ -1,0 +1,8 @@
+# {{ ansible_managed }}
+[Unit]
+Description={{ item.description }}
+
+[Service]
+Type=oneshot
+User={{ item.user | default('root') }}
+ExecStart={{ item.command }}

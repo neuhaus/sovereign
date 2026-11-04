@@ -1,0 +1,11 @@
+# {{ ansible_managed }}
+[Unit]
+Description=Schedule: {{ item.description }}
+
+[Timer]
+OnCalendar={{ item.on_calendar }}
+RandomizedDelaySec={{ item.randomized_delay | default(0) }}
+Persistent={{ item.persistent | default(true) | bool | lower }}
+
+[Install]
+WantedBy=timers.target

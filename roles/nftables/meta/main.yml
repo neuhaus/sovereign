@@ -1,0 +1,12 @@
+---
+galaxy_info:
+  role_name: nftables
+  author: Sovereign contributors
+  description: nftables firewall that only opens the mail server ports
+  license: GPL-3.0-or-later
+  min_ansible_version: "2.15"
+  platforms:
+    - name: Debian
+      versions:
+        - trixie
+dependencies: []

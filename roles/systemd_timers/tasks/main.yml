@@ -1,0 +1,87 @@
+---
+- name: Assert valid timer definitions
+  ansible.builtin.assert:
+    that:
+      - item.name is match('^[a-z0-9-]+$')
+      - item.description is defined
+      - item.command is defined
+      - item.on_calendar is defined
+    fail_msg: "Invalid entry in systemd_timers_jobs: {{ item }}"
+    quiet: true
+  loop: "{{ systemd_timers_jobs }}"
+  loop_control:
+    label: "{{ item.name | default('?') }}"
+
+- name: Install timer service units
+  ansible.builtin.template:
+    src: timer.service.j2
+    dest: "/etc/systemd/system/sovereign-{{ item.name }}.service"
+    owner: root
+    group: root
+    mode: "0644"
+  loop: "{{ systemd_timers_jobs }}"
+  loop_control:
+    label: "{{ item.name }}"
+  notify: Reload systemd
+
+- name: Install timer units
+  ansible.builtin.template:
+    src: timer.timer.j2
+    dest: "/etc/systemd/system/sovereign-{{ item.name }}.timer"
+    owner: root
+    group: root
+    mode: "0644"
+  loop: "{{ systemd_timers_jobs }}"
+  loop_control:
+    label: "{{ item.name }}"
+  notify: Reload systemd
+
+- name: Find installed timers
+  ansible.builtin.find:
+    paths: /etc/systemd/system
+    patterns: sovereign-*.timer
+  register: systemd_timers_installed
+
+- name: Determine timers that are no longer defined
+  ansible.builtin.set_fact:
+    systemd_timers_stale: >-
+      {{ systemd_timers_installed.files | map(attribute='path') | map('basename')
+         | map('regex_replace', '[.]timer$', '')
+         | difference(systemd_timers_jobs | map(attribute='name') | map('regex_replace', '^', 'sovereign-'))
+         | list }}
+
+- name: Stop and disable timers that are no longer defined
+  ansible.builtin.systemd_service:
+    name: "{{ item }}.timer"
+    state: stopped
+    enabled: false
+  loop: "{{ systemd_timers_stale }}"
+
+- name: Remove units of timers that are no longer defined
+  ansible.builtin.file:
+    path: "/etc/systemd/system/{{ item.0 }}.{{ item.1 }}"
+    state: absent
+  loop: "{{ systemd_timers_stale | product(['timer', 'service']) | list }}"
+  notify: Reload systemd
+
+- name: Apply unit changes before enabling timers
+  ansible.builtin.meta: flush_handlers
+
+- name: Verify timer units
+  ansible.builtin.command:
+    argv: >-
+      {{ ['systemd-analyze', 'verify']
+         + (systemd_timers_jobs | map(attribute='name')
+            | map('regex_replace', '^', '/etc/systemd/system/sovereign-')
+            | map('regex_replace', '$', '.timer') | list) }}
+  changed_when: false
+  when: systemd_timers_jobs | length > 0
+
+- name: Enable timers
+  ansible.builtin.systemd_service:
+    name: "sovereign-{{ item.name }}.timer"
+    state: started
+    enabled: true
+  loop: "{{ systemd_timers_jobs }}"
+  loop_control:
+    label: "{{ item.name }}"

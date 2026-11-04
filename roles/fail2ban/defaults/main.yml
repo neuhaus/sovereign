@@ -1,0 +1,16 @@
+---
+# Ban settings applied to every jail.
+fail2ban_bantime: 1h
+fail2ban_findtime: 10m
+fail2ban_maxretry: 5
+
+# Addresses that are never banned, in addition to loopback.
+fail2ban_ignoreip: []
+
+# Enabled jails and their per-jail settings. All jails read from journald
+# (backend = systemd). Later roles add their services here (postfix, dovecot).
+fail2ban_jails:
+  sshd:
+    # sshd >= 9.8 logs authentication failures from the sshd-session process,
+    # which runs inside ssh.service.
+    journalmatch: _SYSTEMD_UNIT=ssh.service + _COMM=sshd + _COMM=sshd-session

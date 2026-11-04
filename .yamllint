@@ -3,7 +3,6 @@ extends: default
 
 # Legacy paths, see .ansible-lint for why they are excluded.
 ignore: |
-  site.yml
   group_vars/
   roles/common/
   roles/mailserver/

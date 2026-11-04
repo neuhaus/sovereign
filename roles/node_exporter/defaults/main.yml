@@ -1,0 +1,4 @@
+---
+# Listen address of the exporter. The firewall (nftables role) only lets the
+# hosts in `monitoring_sources` reach this port.
+node_exporter_listen_address: ":9100"
