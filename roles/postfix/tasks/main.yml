@@ -93,9 +93,12 @@
   register: postfix_smtp_chroot
   changed_when: false
 
+# postconf -M prints the service line followed by its -o options (-h is not
+# allowed with -M); only the first eight fields describe the service itself.
+# Re-adding the service would drop its -o options.
 - name: Read the submission service
   ansible.builtin.command:
-    argv: [postconf, -Mh, submission/inet]
+    argv: [postconf, -M, submission/inet]
   register: postfix_submission_current
   changed_when: false
   failed_when: false
@@ -107,7 +110,7 @@
       - -M
       - "submission/inet=submission inet n - {{ postfix_smtp_chroot.stdout }} - - smtpd"
   when: >-
-    postfix_submission_current.stdout.split()
+    postfix_submission_current.stdout.split()[:8]
     != ['submission', 'inet', 'n', '-', postfix_smtp_chroot.stdout, '-', '-', 'smtpd']
   changed_when: true
   notify: Postfix configuration changed
