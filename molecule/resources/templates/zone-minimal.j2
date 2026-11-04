@@ -1,8 +1,12 @@
 ; {{ ansible_managed }}
-; Minimal zone for the DNSSEC validation tests.
+; Minimal zone for the DNSSEC and DANE tests: an MX host with a TLSA record.
+; (The TLSA data is a dummy; the tests only check that DANE is detected.)
 $ORIGIN {{ item }}.
 $TTL 300
 @       IN SOA  ns.{{ sovtest_domain }}. hostmaster.{{ sovtest_domain }}. 1 3600 600 86400 300
 @       IN NS   ns.{{ sovtest_domain }}.
 @       IN A    192.0.2.80
+@       IN MX   10 mx
 www     IN A    192.0.2.80
+mx      IN A    192.0.2.25
+_25._tcp.mx IN TLSA 3 1 1 0000000000000000000000000000000000000000000000000000000000000000

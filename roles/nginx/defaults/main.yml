@@ -1,3 +1,13 @@
 ---
 # Webroot for ACME HTTP-01 challenges (certbot role).
 nginx_acme_webroot: /var/www/acme
+
+# Certificate (certbot role) and TLS policy for the HTTPS sites, provided as
+# /etc/nginx/snippets/sovereign-tls.conf. Sites that include it are added by
+# roles running after certbot.
+nginx_tls_cert_name: "{{ certbot_domains[0] }}"
+nginx_tls_cert_file: "/etc/letsencrypt/live/{{ nginx_tls_cert_name }}/fullchain.pem"
+nginx_tls_key_file: "/etc/letsencrypt/live/{{ nginx_tls_cert_name }}/privkey.pem"
+nginx_tls12_ciphers: ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-RSA-AES128-GCM-SHA256
+nginx_tls13_ciphersuites: TLS_AES_256_GCM_SHA384:TLS_AES_128_GCM_SHA256
+nginx_tls_curves: prime256v1:secp384r1

@@ -1,0 +1,164 @@
+#!/usr/bin/python3
+"""TLS policy socketmap for Postfix: DANE first, MTA-STS otherwise.
+
+Managed by Ansible (Sovereign mta_sts role).
+
+postfix-mta-sts-resolver answers every domain with an MTA-STS policy with
+"secure match=...", which overrides Postfix's DANE verification, against
+RFC 8461 section 2 ("MUST NOT allow MTA-STS Policy validation to override a
+failing DANE validation"). This small socketmap sits in front of it:
+
+- if the domain's MX RRset is DNSSEC-authenticated and at least one MX host
+  has an authenticated TLSA record (_25._tcp), DANE applies: answer
+  NOTFOUND, so Postfix uses its default level (smtp_tls_security_level = dane);
+- otherwise forward the request to postfix-mta-sts-resolver and return its
+  answer unchanged;
+- DNS failures and an unreachable resolver give TEMP: the mail is deferred
+  instead of being delivered with weaker protection.
+
+DNS queries go to the local validating resolver (Unbound), which sets the
+AD flag on authenticated answers.
+
+Usage: sovereign-tls-policy LISTEN_HOST LISTEN_PORT RESOLVER_HOST RESOLVER_PORT [DNS_SERVER]
+"""
+
+import asyncio
+import ipaddress
+import logging
+import sys
+
+import dns.asyncresolver
+import dns.flags
+import dns.rdatatype
+import dns.resolver
+
+MAX_REQUEST = 1024
+MAX_MX = 10
+DNS_TIMEOUT = 10
+
+log = logging.getLogger("sovereign-tls-policy")
+
+
+def netstring(payload: bytes) -> bytes:
+    return str(len(payload)).encode() + b":" + payload + b","
+
+
+async def read_netstring(reader: asyncio.StreamReader) -> bytes:
+    length = await reader.readuntil(b":")
+    size = int(length[:-1])
+    if size > MAX_REQUEST:
+        raise ValueError("request too long")
+    data = await reader.readexactly(size + 1)
+    if data[-1:] != b",":
+        raise ValueError("malformed netstring")
+    return data[:-1]
+
+
+class DnsTemporaryFailure(Exception):
+    pass
+
+
+class Policy:
+    def __init__(self, resolver_host, resolver_port, dns_server):
+        self.resolver_host = resolver_host
+        self.resolver_port = resolver_port
+        self.dns = dns.asyncresolver.Resolver(configure=False)
+        self.dns.nameservers = [dns_server]
+        self.dns.use_edns(0, dns.flags.DO, 1232)
+        self.dns.lifetime = DNS_TIMEOUT
+
+    async def _secure(self, name, rdtype):
+        """Records of an authenticated answer, [] for an authenticated or
+        unauthenticated "no data", None for an unauthenticated answer."""
+        try:
+            answer = await self.dns.resolve(name, rdtype, raise_on_no_answer=False)
+        except dns.resolver.NXDOMAIN:
+            return []
+        except (dns.resolver.NoNameservers, dns.resolver.LifetimeTimeout) as exc:
+            raise DnsTemporaryFailure(f"{rdtype} {name}: {exc}") from exc
+        if not answer.response.flags & dns.flags.AD:
+            return None
+        return list(answer.rrset) if answer.rrset is not None else []
+
+    async def dane_applies(self, domain):
+        mx = await self._secure(domain, "MX")
+        if mx is None:
+            return False  # MX lookup not DNSSEC-validated: no DANE (as in Postfix)
+        hosts = [r.exchange.to_text(omit_final_dot=True) for r in sorted(mx, key=lambda r: r.preference)]
+        hosts = [h for h in hosts if h] or [domain]  # no MX: the domain itself
+        for host in hosts[:MAX_MX]:
+            tlsa = await self._secure(f"_25._tcp.{host}", "TLSA")
+            if tlsa:
+                return True
+        return False
+
+    async def forward(self, request):
+        reader, writer = await asyncio.wait_for(
+            asyncio.open_connection(self.resolver_host, self.resolver_port), timeout=5
+        )
+        try:
+            writer.write(netstring(request))
+            await writer.drain()
+            return await asyncio.wait_for(read_netstring(reader), timeout=30)
+        finally:
+            writer.close()
+
+    async def answer(self, request: bytes) -> bytes:
+        _, _, key = request.decode("utf-8", "replace").partition(" ")
+        domain = key.strip().lower().rstrip(".")
+        if not domain or domain.startswith((".", "[")) or _is_ip(domain):
+            return b"NOTFOUND "
+        try:
+            if await self.dane_applies(domain):
+                log.info("%s: DANE (TLSA authenticated), MTA-STS not consulted", domain)
+                return b"NOTFOUND "
+        except DnsTemporaryFailure as exc:
+            log.warning("%s: DNS failure, deferring: %s", domain, exc)
+            return b"TEMP DNS lookup failed"
+        try:
+            reply = await self.forward(request)
+        except (OSError, asyncio.TimeoutError, ValueError, asyncio.IncompleteReadError) as exc:
+            log.warning("%s: MTA-STS resolver unavailable, deferring: %s", domain, exc)
+            return b"TEMP MTA-STS resolver unavailable"
+        log.info("%s: %s", domain, reply.decode("utf-8", "replace"))
+        return reply
+
+
+def _is_ip(value):
+    try:
+        ipaddress.ip_address(value)
+        return True
+    except ValueError:
+        return False
+
+
+async def handle(policy, reader, writer):
+    try:
+        while True:
+            try:
+                request = await read_netstring(reader)
+            except asyncio.IncompleteReadError:
+                break
+            writer.write(netstring(await policy.answer(request)))
+            await writer.drain()
+    except (ValueError, ConnectionError) as exc:
+        log.warning("bad request: %s", exc)
+    finally:
+        writer.close()
+
+
+async def main(argv):
+    listen_host, listen_port, resolver_host, resolver_port = argv[1:5]
+    dns_server = argv[5] if len(argv) > 5 else "127.0.0.1"
+    policy = Policy(resolver_host, int(resolver_port), dns_server)
+    server = await asyncio.start_server(
+        lambda r, w: handle(policy, r, w), listen_host, int(listen_port)
+    )
+    log.info("listening on %s:%s", listen_host, listen_port)
+    async with server:
+        await server.serve_forever()
+
+
+if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
+    asyncio.run(main(sys.argv))

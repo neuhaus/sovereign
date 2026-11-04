@@ -1,0 +1,12 @@
+---
+# "Nginx configuration changed" is handled by the nginx role's handlers.
+- name: Restart postfix-mta-sts-resolver
+  ansible.builtin.systemd_service:
+    name: postfix-mta-sts-resolver
+    state: restarted
+
+- name: Restart sovereign-tls-policy
+  ansible.builtin.systemd_service:
+    name: sovereign-tls-policy
+    state: restarted
+    daemon_reload: true

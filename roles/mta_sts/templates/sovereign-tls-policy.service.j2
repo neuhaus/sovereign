@@ -1,0 +1,28 @@
+# {{ ansible_managed }}
+[Unit]
+Description=Sovereign TLS policy socketmap for Postfix (DANE before MTA-STS)
+After=network.target unbound.service postfix-mta-sts-resolver.service
+Wants=postfix-mta-sts-resolver.service
+Before=postfix.service
+
+[Service]
+ExecStart=/usr/local/sbin/sovereign-tls-policy 127.0.0.1 {{ mta_sts_policy_port }} 127.0.0.1 {{ mta_sts_resolver_port }} 127.0.0.1
+Restart=on-failure
+DynamicUser=yes
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictAddressFamilies=AF_INET AF_INET6
+RestrictNamespaces=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+SystemCallArchitectures=native
+CapabilityBoundingSet=
+
+[Install]
+WantedBy=multi-user.target

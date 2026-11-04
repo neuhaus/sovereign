@@ -1,0 +1,15 @@
+# {{ ansible_managed }}
+#
+# TLS settings for Sovereign's HTTPS sites (include in a server block). Same
+# policy as Postfix and Dovecot: TLS 1.2/1.3, ECDHE and AES-GCM only.
+ssl_certificate {{ nginx_tls_cert_file }};
+ssl_certificate_key {{ nginx_tls_key_file }};
+ssl_protocols TLSv1.2 TLSv1.3;
+ssl_ciphers {{ nginx_tls12_ciphers }};
+ssl_conf_command Ciphersuites {{ nginx_tls13_ciphersuites }};
+ssl_ecdh_curve {{ nginx_tls_curves }};
+ssl_prefer_server_ciphers off;
+ssl_session_cache shared:sovereign_tls:10m;
+ssl_session_timeout 1d;
+ssl_session_tickets off;
+add_header Strict-Transport-Security "max-age=63072000" always;

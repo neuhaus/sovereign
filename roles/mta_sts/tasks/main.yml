@@ -1,0 +1,94 @@
+---
+# --- Inbound: publish the policy ---------------------------------------------
+- name: Create the MTA-STS webroot
+  ansible.builtin.file:
+    path: "{{ mta_sts_webroot }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Write the MTA-STS policy
+  ansible.builtin.template:
+    src: mta-sts.txt.j2
+    dest: "{{ mta_sts_webroot }}/mta-sts.txt"
+    owner: root
+    group: root
+    mode: "0644"
+
+# The id in the _mta-sts TXT record must change with the policy: derive it
+# from the policy content, so it changes exactly when the policy does.
+- name: Record the policy id for the _mta-sts TXT record
+  ansible.builtin.copy:
+    dest: /var/lib/sovereign/mta-sts-id
+    owner: root
+    group: root
+    mode: "0644"
+    content: "{{ lookup('ansible.builtin.template', 'mta-sts.txt.j2') | hash('sha1') | truncate(16, True, '') }}\n"
+
+- name: Configure the MTA-STS site
+  ansible.builtin.template:
+    src: nginx-mta-sts.conf.j2
+    dest: /etc/nginx/sites-available/sovereign-mta-sts.conf
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Nginx configuration changed
+
+- name: Enable the MTA-STS site
+  ansible.builtin.file:
+    src: /etc/nginx/sites-available/sovereign-mta-sts.conf
+    dest: /etc/nginx/sites-enabled/sovereign-mta-sts.conf
+    state: link
+  notify: Nginx configuration changed
+
+# --- Outbound: enforce other domains' policies, DANE first ---------------------
+- name: Install postfix-mta-sts-resolver
+  ansible.builtin.apt:
+    name:
+      - postfix-mta-sts-resolver
+      # sovereign-tls-policy
+      - python3-dnspython
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+
+- name: Configure postfix-mta-sts-resolver
+  ansible.builtin.template:
+    src: mta-sts-daemon.yml.j2
+    dest: /etc/mta-sts-daemon.yml
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Restart postfix-mta-sts-resolver
+
+- name: Install sovereign-tls-policy
+  ansible.builtin.copy:
+    src: sovereign-tls-policy
+    dest: /usr/local/sbin/sovereign-tls-policy
+    owner: root
+    group: root
+    mode: "0755"
+  notify: Restart sovereign-tls-policy
+
+- name: Install the sovereign-tls-policy service
+  ansible.builtin.template:
+    src: sovereign-tls-policy.service.j2
+    dest: /etc/systemd/system/sovereign-tls-policy.service
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Restart sovereign-tls-policy
+
+- name: Enable the resolver and the policy service
+  ansible.builtin.systemd_service:
+    name: "{{ item }}"
+    state: started
+    enabled: true
+    daemon_reload: true
+  loop:
+    - postfix-mta-sts-resolver
+    - sovereign-tls-policy
+
+- name: Apply MTA-STS changes
+  ansible.builtin.meta: flush_handlers

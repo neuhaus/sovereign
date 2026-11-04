@@ -1,0 +1,40 @@
+---
+- name: Create the autoconfig directories
+  ansible.builtin.file:
+    path: "{{ autoconfig_webroot }}/{{ item }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  loop:
+    - mail
+    - autodiscover
+
+- name: Write the client configuration files
+  ansible.builtin.template:
+    src: "{{ item.src }}"
+    dest: "{{ autoconfig_webroot }}/{{ item.dest }}"
+    owner: root
+    group: root
+    mode: "0644"
+  loop:
+    - {src: config-v1.1.xml.j2, dest: mail/config-v1.1.xml}
+    - {src: autodiscover.xml.j2, dest: autodiscover/autodiscover.xml}
+  loop_control:
+    label: "{{ item.dest }}"
+
+- name: Configure the autoconfig site
+  ansible.builtin.template:
+    src: nginx-autoconfig.conf.j2
+    dest: /etc/nginx/sites-available/sovereign-autoconfig.conf
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Nginx configuration changed
+
+- name: Enable the autoconfig site
+  ansible.builtin.file:
+    src: /etc/nginx/sites-available/sovereign-autoconfig.conf
+    dest: /etc/nginx/sites-enabled/sovereign-autoconfig.conf
+    state: link
+  notify: Nginx configuration changed

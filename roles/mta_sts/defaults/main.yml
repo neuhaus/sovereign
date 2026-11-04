@@ -1,0 +1,15 @@
+---
+# Inbound: MTA-STS policy served at https://mta-sts.<domain>/.well-known/mta-sts.txt
+# for every mail domain. Publish "_mta-sts.<domain> TXT v=STSv1; id=<id>"
+# (the id is written to /var/lib/sovereign/mta-sts-id and must change
+# whenever the policy changes).
+mta_sts_domains: "{{ mail_domains | default([]) }}"
+mta_sts_mode: enforce            # enforce, testing or none
+mta_sts_max_age: 604800          # one week
+mta_sts_mx: ["{{ certbot_domains[0] }}"]
+mta_sts_webroot: /var/www/mta-sts
+
+# Outbound: postfix-mta-sts-resolver, queried through sovereign-tls-policy,
+# which lets DANE take precedence (RFC 8461 section 2).
+mta_sts_resolver_port: 8461
+mta_sts_policy_port: 8462

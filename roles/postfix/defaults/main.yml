@@ -20,6 +20,10 @@ postfix_message_size_limit: 52428800  # 50 MiB
 postfix_milters:
   - inet:127.0.0.1:11332
 
+# TLS policy lookups for outgoing mail (mta_sts role: DANE first, then MTA-STS).
+# Empty: DANE/opportunistic TLS only.
+postfix_tls_policy_maps: socketmap:inet:127.0.0.1:8462:postfix
+
 # Mail database (maildb role).
 postfix_maildb_path: "{{ maildb_path | default('/var/lib/sovereign/mail.sqlite') }}"
 postfix_maildb_group: "{{ maildb_group | default('maildb') }}"

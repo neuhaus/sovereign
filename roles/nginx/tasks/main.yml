@@ -20,6 +20,15 @@
     state: absent
   notify: Nginx configuration changed
 
+- name: Install the TLS settings for HTTPS sites
+  ansible.builtin.template:
+    src: sovereign-tls.conf.j2
+    dest: /etc/nginx/snippets/sovereign-tls.conf
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Nginx configuration changed
+
 - name: Configure the HTTP site
   ansible.builtin.template:
     src: sovereign-http.conf.j2

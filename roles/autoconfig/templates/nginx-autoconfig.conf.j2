@@ -1,0 +1,29 @@
+# {{ ansible_managed }}
+# Mail client autoconfiguration (Thunderbird autoconfig, Outlook autodiscover).
+server {
+    listen 443 ssl;
+    listen [::]:443 ssl;
+    http2 on;
+    server_name {{ (autoconfig_domains | map('regex_replace', '^', 'autoconfig.') | list
+                    + autoconfig_domains | map('regex_replace', '^', 'autodiscover.') | list) | join(' ') }};
+    include /etc/nginx/snippets/sovereign-tls.conf;
+    root {{ autoconfig_webroot }};
+
+    location = /mail/config-v1.1.xml {
+        default_type application/xml;
+    }
+    location = /.well-known/autoconfig/mail/config-v1.1.xml {
+        default_type application/xml;
+        try_files /mail/config-v1.1.xml =404;
+    }
+    # Outlook POSTs its request; answer every method with the static file
+    # (nginx refuses POST to static files with 405 otherwise).
+    location ~* ^/autodiscover/autodiscover\.xml$ {
+        default_type application/xml;
+        error_page 405 =200 /autodiscover/autodiscover.xml;
+        try_files /autodiscover/autodiscover.xml =404;
+    }
+    location / {
+        return 404;
+    }
+}

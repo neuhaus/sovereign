@@ -1,0 +1,10 @@
+---
+# Mail client autoconfiguration for every mail domain:
+#   https://autoconfig.<domain>/mail/config-v1.1.xml (Thunderbird and others)
+#   https://autodiscover.<domain>/autodiscover/autodiscover.xml (Outlook)
+# Publish autoconfig.<domain> and autodiscover.<domain> as CNAMEs to the mail
+# host, and add both names to certbot_domains.
+autoconfig_domains: "{{ mail_domains | default([]) }}"
+autoconfig_mail_host: "{{ certbot_domains[0] }}"
+autoconfig_display_name: "{{ autoconfig_domains[0] | default('Mail') }} mail"
+autoconfig_webroot: /var/www/autoconfig

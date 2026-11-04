@@ -1,0 +1,14 @@
+# {{ ansible_managed }}
+# postfix-mta-sts-resolver. Postfix does not query it directly but through
+# sovereign-tls-policy (DANE precedence).
+host: 127.0.0.1
+port: {{ mta_sts_resolver_port }}
+reuse_port: true
+cache:
+  type: sqlite
+  options:
+    filename: "/var/lib/mta-sts/cache.db"
+default_zone:
+  strict_testing: false
+  timeout: 4
+  require_sni: true

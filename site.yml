@@ -17,6 +17,8 @@
     - role: nginx
     - role: certbot
     - role: maildb
+    - role: mta_sts
+    - role: autoconfig
     - role: rspamd
     - role: postfix
     - role: dovecot
