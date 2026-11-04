@@ -22,8 +22,22 @@ except (socket.timeout, TimeoutError):
 
 @pytest.fixture(scope="module")
 def sovtest_vars(host):
-    """Inventory variables of the instance under test (sovtest_* and role vars)."""
+    """Inventory variables of the instance under test, NOT templated.
+
+    Values that contain Jinja (e.g. "mail.{{ sovtest_domain }}") come back
+    literally; use the `ansible_var` fixture for those.
+    """
     return host.ansible.get_variables()
+
+
+@pytest.fixture(scope="module")
+def ansible_var(host):
+    """Return a fully templated inventory variable of the instance under test."""
+
+    def get(name):
+        return host.ansible("ansible.builtin.debug", "var=" + name)[name]
+
+    return get
 
 
 @pytest.fixture(scope="module")

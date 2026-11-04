@@ -6,25 +6,32 @@ testinfra_hosts = ["mail"]
 
 
 @pytest.fixture(scope="module")
-def live(sovtest_vars):
-    return "/etc/letsencrypt/live/" + sovtest_vars["certbot_domains"][0]
+def domains(ansible_var):
+    return ansible_var("certbot_domains")
+
+
+@pytest.fixture(scope="module")
+def live(domains):
+    return "/etc/letsencrypt/live/" + domains[0]
 
 
 def spki_sha256(host, live):
     """SHA-256 of the public key: what a DANE TLSA 3 1 1 record pins."""
-    return host.check_output(
-        "openssl x509 -in %s/cert.pem -noout -pubkey"
-        " | openssl pkey -pubin -outform der | sha256sum | cut -d' ' -f1",
-        live,
+    # pipefail: a missing certificate must fail here instead of hashing nothing.
+    digest = host.check_output(
+        "bash -o pipefail -c \"openssl x509 -in %s/cert.pem -noout -pubkey"
+        " | openssl pkey -pubin -outform der | sha256sum | cut -d' ' -f1\"" % live
     )
+    assert len(digest) == 64, digest
+    return digest
 
 
-def test_certificate_issued_by_pebble_for_all_names(host, live, sovtest_vars):
+def test_certificate_issued_by_pebble_for_all_names(host, live, domains):
     issuer = host.check_output("openssl x509 -in %s/cert.pem -noout -issuer", live)
     assert "Pebble" in issuer
     san = host.check_output("openssl x509 -in %s/cert.pem -noout -ext subjectAltName", live)
     names = sorted(part.strip()[4:] for part in san.splitlines()[-1].split(",") if part.strip().startswith("DNS:"))
-    assert names == sorted(sovtest_vars["certbot_domains"])
+    assert names == sorted(domains)
 
 
 def test_certificate_chain_verifies(host, live):
@@ -32,8 +39,9 @@ def test_certificate_chain_verifies(host, live):
     host.check_output("openssl verify -untrusted %s/chain.pem %s/cert.pem", live, live)
 
 
-def test_renewal_keeps_key(host, sovtest_vars):
-    conf = host.file("/etc/letsencrypt/renewal/%s.conf" % sovtest_vars["certbot_domains"][0])
+def test_renewal_keeps_key(host, domains):
+    conf = host.file("/etc/letsencrypt/renewal/%s.conf" % domains[0])
+    assert conf.exists
     assert "reuse_key = True" in conf.content_string
 
 

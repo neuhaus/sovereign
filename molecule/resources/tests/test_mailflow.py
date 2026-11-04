@@ -20,7 +20,7 @@ BOB = "sovtest-bob-pass"
 
 
 @pytest.fixture(scope="module")
-def ctx(sovtest_vars):
+def ctx(sovtest_vars, ansible_var):
     d = sovtest_vars["sovtest_domain"]
     return {
         "mail_ip": sovtest_vars["sovtest_ips"]["mail"],
@@ -28,7 +28,7 @@ def ctx(sovtest_vars):
         "bob": "bob@" + d,
         "domain": d,
         "external": sovtest_vars["sovtest_external_domain"],
-        "cert": "/etc/letsencrypt/live/%s/cert.pem" % sovtest_vars["certbot_domains"][0],
+        "cert": "/etc/letsencrypt/live/%s/cert.pem" % ansible_var("certbot_domains")[0],
     }
 
 
