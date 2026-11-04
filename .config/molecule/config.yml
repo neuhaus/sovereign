@@ -50,7 +50,8 @@ provisioner:
       mailservers:
         # Test accounts. Passwords (test only): alice "sovtest-alice-pass",
         # alice's app password "AlicPhn1-sovtest-app-phone", bob "sovtest-bob-pass".
-        # Molecule expands $VAR in this file, so every "$" of a hash is written "$$".
+        # Molecule expands environment variables in this file, so the dollar signs
+        # of the hashes are doubled.
         mail_domains:
           - "{{ sovtest_domain }}"
         mail_mailboxes:
