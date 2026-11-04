@@ -3,7 +3,7 @@
 # A restart (not a reload) also applies the new maildb group membership.
 - name: Check dovecot configuration
   ansible.builtin.command:
-    argv: [doveconf, -n]
+    argv: [doveconf, -n, -c, /etc/dovecot/dovecot.conf]
   changed_when: false
   listen: Dovecot configuration changed
 
