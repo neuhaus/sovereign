@@ -2,6 +2,7 @@
 
 Working notes for the Debian 13 / Testing rebuild of Sovereign (branch
 `trixie-wip`). Updated with every step; the commit messages have the details.
+The plan itself, with the decisions worked in, is [PLAN.md](PLAN.md).
 
 Last update: Phase 2.4 (Rspamd) and the core of 2.5 (certificates) are in;
 CI for 2.4 is being fixed (see "Open").
@@ -77,6 +78,8 @@ will be deleted once replaced.
   passwords) vs. Ansible as the only writer: decide before Phase 3 is closed.
 - postsrsd milter mode (see findings).
 - Unbound: systemd-resolved is masked when present; check on real servers.
+- Role design documents: CONTRIBUTING.md asks for one per role; the new roles
+  have none yet (decide in Phase 5).
 
 ## Testing
 

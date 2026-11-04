@@ -59,7 +59,7 @@ A module must be idempotent. If it's run once or many times, the result should b
 
 ### Databases
 
-Sovereign runs no database server. Services that need a database use SQLite, as long as the data and write load stay within SQLite's design limits (the mail database has a single writer, Ansible). Give each service its own database file. Readers that must not write (Postfix, Dovecot) open SQLite databases read-only, and databases stay in rollback-journal mode (`journal_mode = DELETE`): WAL needs write access for every reader.
+Sovereign runs no database server. Services that need a database use SQLite, as long as the data and write load stay within SQLite's design limits (the mail database has a single writer, Ansible). Give each service its own database file. Readers that should not write (Postfix, Dovecot) open SQLite databases read-only. Use the rollback journal (`journal_mode = DELETE`) unless every reader may write: in WAL mode even readers must write the `-shm` file, and a reader without that right fails with "attempt to write a readonly database". With a single, rare writer WAL brings no benefit anyway.
 
 ### Registrations
 
