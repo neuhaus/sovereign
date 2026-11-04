@@ -62,6 +62,10 @@ will be deleted once replaced.
   DELETE.
 - Dovecot 2.4 tools (sievec, doveadm) take the configuration of the running
   Dovecot unless `-c` is given.
+- With the full configuration, Dovecot 2.4.5 tools refuse to act as the vmail
+  system user if its UID is below `first_valid_uid` (default 500); the role sets
+  first/last_valid_uid to exactly that UID. System UIDs differ between hosts
+  (999 in the chroots, 101 in CI).
 - Debian Testing changed Postfix's chroot default (13: chroot, Testing: none);
   the role keeps Debian's master.cf and only adds the submission service.
 - OpenSSH >= 10.1 throttles failed logins itself ("drop connection ...

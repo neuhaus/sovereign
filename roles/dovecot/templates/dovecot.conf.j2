@@ -63,6 +63,10 @@ userdb sql {
 # --- Mail storage ------------------------------------------------------------
 mail_uid = {{ dovecot_vmail_user }}
 mail_gid = {{ dovecot_vmail_user }}
+# vmail is a system user (its UID is below Dovecot's default first_valid_uid
+# of 500 on some systems); allow exactly this UID for mail access.
+first_valid_uid = {{ dovecot_vmail_account.uid }}
+last_valid_uid = {{ dovecot_vmail_account.uid }}
 mail_driver = maildir
 mail_home = {{ dovecot_vmail_dir }}/%{user | domain}/%{user | username}
 mail_path = ~/Maildir

@@ -17,6 +17,7 @@ def domain(sovtest_vars):
 
 
 def https(host, name, path, *options):
+    # Options are part of the format string: write a literal % as %%.
     return host.check_output(
         "curl -fsS --resolve %s:443:127.0.0.1 " + " ".join(options) + " https://%s%s", name, name, path
     )
@@ -35,7 +36,7 @@ def test_mta_sts_policy_served(host, domain):
 
 
 def test_mta_sts_policy_is_text_plain(host, domain):
-    content_type = https(host, "mta-sts." + domain, "/.well-known/mta-sts.txt", "-o /dev/null", "-w '%{content_type}'")
+    content_type = https(host, "mta-sts." + domain, "/.well-known/mta-sts.txt", "-o /dev/null", "-w '%%{content_type}'")
     assert content_type == "text/plain"
 
 

@@ -15,6 +15,7 @@
     home: "{{ dovecot_vmail_dir }}"
     create_home: false
     shell: /usr/sbin/nologin
+  register: dovecot_vmail_account
 
 - name: Create the mail storage directory
   ansible.builtin.file:
