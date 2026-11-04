@@ -1,0 +1,15 @@
+---
+# Debian 13 "Trixie". Shared settings: .config/molecule/config.yml
+provisioner:
+  name: ansible
+  inventory:
+    group_vars:
+      all:
+        sovtest_target: trixie
+        # Prefix for incus instance, profile and network names (max. 15 chars).
+        sovtest_prefix: sov-trixie
+        sovtest_subnet: 10.234.13
+        sovtest_ips:
+          mail: 10.234.13.10
+          dns: 10.234.13.11
+          pebble: 10.234.13.12

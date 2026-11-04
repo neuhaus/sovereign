@@ -1,0 +1,48 @@
+---
+# Shared Molecule base configuration, merged into every scenario in molecule/.
+# Scenarios only set what differs between them (target track, names, subnet).
+#
+# Test topology (one incus bridge per scenario, static IPv4 addresses):
+#   mail    system under test (group "mailservers")
+#   dns     authoritative mock DNS (knot) for the test domain
+#   pebble  local ACME server (Pebble)
+
+dependency:
+  name: galaxy
+  # Collections are installed from requirements.yml before Molecule runs.
+  enabled: false
+
+driver:
+  name: default
+  options:
+    managed: true
+
+platforms:
+  - name: mail
+    groups:
+      - mailservers
+  - name: dns
+    groups:
+      - testinfra
+  - name: pebble
+    groups:
+      - testinfra
+
+provisioner:
+  name: ansible
+  env:
+    ANSIBLE_ROLES_PATH: ${MOLECULE_PROJECT_DIRECTORY}/roles
+  playbooks:
+    create: ../resources/create.yml
+    prepare: ../resources/prepare.yml
+    converge: ../resources/converge.yml
+    destroy: ../resources/destroy.yml
+  inventory:
+    group_vars:
+      all:
+        sovtest_domain: sovereign.test
+        sovtest_image: images:debian/13
+
+verifier:
+  name: testinfra
+  directory: ../resources/tests

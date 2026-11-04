@@ -1,0 +1,16 @@
+---
+# Debian Testing. The mail instance starts from Debian 13 and is upgraded to
+# testing in prepare.yml. Shared settings: .config/molecule/config.yml
+provisioner:
+  name: ansible
+  inventory:
+    group_vars:
+      all:
+        sovtest_target: testing
+        # Prefix for incus instance, profile and network names (max. 15 chars).
+        sovtest_prefix: sov-testing
+        sovtest_subnet: 10.234.14
+        sovtest_ips:
+          mail: 10.234.14.10
+          dns: 10.234.14.11
+          pebble: 10.234.14.12

@@ -1,0 +1,243 @@
+---
+# Test-only preparation. Nothing here may end up in production roles.
+
+- name: Prepare mock DNS
+  hosts: dns
+  gather_facts: true
+  handlers:
+    - name: Restart knot
+      ansible.builtin.systemd_service:
+        name: knot
+        state: restarted
+  tasks:
+    - name: Install knot
+      ansible.builtin.apt:
+        name: knot
+        state: present
+        update_cache: true
+        cache_valid_time: 3600
+
+    - name: Configure knot
+      ansible.builtin.template:
+        src: templates/knot.conf.j2
+        dest: /etc/knot/knot.conf
+        owner: root
+        group: knot
+        mode: "0640"
+        validate: knotc -c %s conf-check
+      notify: Restart knot
+
+    - name: Deploy test zone
+      ansible.builtin.template:
+        src: templates/zone.j2
+        dest: "/var/lib/knot/{{ sovtest_domain }}.zone"
+        owner: knot
+        group: knot
+        mode: "0644"
+      notify: Restart knot
+
+    - name: Enable knot
+      ansible.builtin.systemd_service:
+        name: knot
+        state: started
+        enabled: true
+
+- name: Prepare Pebble ACME server
+  hosts: pebble
+  gather_facts: true
+  vars:
+    pebble_dir: /etc/pebble
+    pebble_fqdn: "pebble.{{ sovtest_domain }}"
+  handlers:
+    - name: Restart pebble
+      ansible.builtin.systemd_service:
+        name: pebble
+        state: restarted
+        daemon_reload: true
+  tasks:
+    - name: Install pebble and openssl
+      ansible.builtin.apt:
+        name:
+          - pebble
+          - openssl
+        state: present
+        update_cache: true
+        cache_valid_time: 3600
+
+    - name: Create pebble directory
+      ansible.builtin.file:
+        path: "{{ pebble_dir }}"
+        state: directory
+        owner: root
+        group: root
+        mode: "0755"
+
+    # Pebble's own HTTPS endpoint needs a certificate. A small test CA signs it;
+    # the mail instance trusts that CA in the play below.
+    - name: Create TLS CA for the Pebble API
+      ansible.builtin.command:
+        argv:
+          - openssl
+          - req
+          - -x509
+          - -newkey
+          - ec
+          - -pkeyopt
+          - ec_paramgen_curve:prime256v1
+          - -nodes
+          - -days
+          - "3650"
+          - -subj
+          - /CN=Sovereign test Pebble API CA
+          - -keyout
+          - "{{ pebble_dir }}/api-ca.key"
+          - -out
+          - "{{ pebble_dir }}/api-ca.crt"
+        creates: "{{ pebble_dir }}/api-ca.crt"
+
+    - name: Create key and CSR for the Pebble API
+      ansible.builtin.command:
+        argv:
+          - openssl
+          - req
+          - -new
+          - -newkey
+          - ec
+          - -pkeyopt
+          - ec_paramgen_curve:prime256v1
+          - -nodes
+          - -subj
+          - "/CN={{ pebble_fqdn }}"
+          - -addext
+          - "subjectAltName=DNS:{{ pebble_fqdn }},IP:{{ sovtest_ips.pebble }}"
+          - -keyout
+          - "{{ pebble_dir }}/api.key"
+          - -out
+          - "{{ pebble_dir }}/api.csr"
+        creates: "{{ pebble_dir }}/api.csr"
+
+    - name: Sign the Pebble API certificate
+      ansible.builtin.command:
+        argv:
+          - openssl
+          - x509
+          - -req
+          - -in
+          - "{{ pebble_dir }}/api.csr"
+          - -CA
+          - "{{ pebble_dir }}/api-ca.crt"
+          - -CAkey
+          - "{{ pebble_dir }}/api-ca.key"
+          - -CAcreateserial
+          - -days
+          - "365"
+          - -copy_extensions
+          - copy
+          - -out
+          - "{{ pebble_dir }}/api.crt"
+        creates: "{{ pebble_dir }}/api.crt"
+
+    - name: Configure pebble
+      ansible.builtin.template:
+        src: templates/pebble-config.json.j2
+        dest: "{{ pebble_dir }}/pebble-config.json"
+        owner: root
+        group: root
+        mode: "0644"
+      notify: Restart pebble
+
+    - name: Install pebble systemd unit
+      ansible.builtin.template:
+        src: templates/pebble.service.j2
+        dest: /etc/systemd/system/pebble.service
+        owner: root
+        group: root
+        mode: "0644"
+      notify: Restart pebble
+
+    - name: Enable pebble
+      ansible.builtin.systemd_service:
+        name: pebble
+        state: started
+        enabled: true
+        daemon_reload: true
+
+    - name: Wait for the pebble API
+      ansible.builtin.wait_for:
+        port: "{{ item }}"
+        timeout: 60
+      loop:
+        - 14000
+        - 15000
+
+    - name: Read Pebble API CA
+      ansible.builtin.slurp:
+        src: "{{ pebble_dir }}/api-ca.crt"
+      register: pebble_api_ca
+
+- name: Prepare system under test
+  hosts: mail
+  gather_facts: true
+  handlers:
+    - name: Update CA certificates
+      ansible.builtin.command:
+        argv: [update-ca-certificates]
+      changed_when: true
+  tasks:
+    - name: Upgrade to Debian Testing
+      when: sovtest_target == 'testing'
+      block:
+        - name: Remove legacy sources.list
+          ansible.builtin.file:
+            path: /etc/apt/sources.list
+            state: absent
+
+        - name: Point apt at Debian Testing
+          ansible.builtin.template:
+            src: templates/debian-testing.sources.j2
+            dest: /etc/apt/sources.list.d/debian.sources
+            owner: root
+            group: root
+            mode: "0644"
+
+        - name: Dist-upgrade to Debian Testing
+          ansible.builtin.apt:
+            upgrade: dist
+            update_cache: true
+
+        - name: Reboot into Debian Testing
+          ansible.builtin.reboot:
+            reboot_timeout: 300
+
+    - name: Install test tooling
+      ansible.builtin.apt:
+        name:
+          - ca-certificates
+          - curl
+          - knot-dnsutils
+        state: present
+        update_cache: true
+        cache_valid_time: 3600
+
+    - name: Trust the Pebble API CA
+      ansible.builtin.copy:
+        content: "{{ hostvars['pebble'].pebble_api_ca.content | b64decode }}"
+        dest: /usr/local/share/ca-certificates/sovereign-test-pebble-api.crt
+        owner: root
+        group: root
+        mode: "0644"
+      notify: Update CA certificates
+
+    - name: Apply CA trust before talking to Pebble
+      ansible.builtin.meta: flush_handlers
+
+    # Pebble generates a fresh issuance root on every start. Trusting it lets
+    # services verify certificates Pebble issues during later test phases.
+    - name: Trust the Pebble issuance root
+      ansible.builtin.get_url:
+        url: "https://{{ sovtest_ips.pebble }}:15000/roots/0"
+        dest: /usr/local/share/ca-certificates/sovereign-test-pebble-root.crt
+        owner: root
+        group: root
+        mode: "0644"
+      notify: Update CA certificates

@@ -1,0 +1,38 @@
+---
+extends: default
+
+# Legacy paths, see .ansible-lint for why they are excluded.
+ignore: |
+  .vagrant/
+  site.yml
+  group_vars/
+  roles/blog/
+  roles/common/
+  roles/git/
+  roles/ircbouncer/
+  roles/mailserver/
+  roles/monitoring/
+  roles/news/
+  roles/owncloud/
+  roles/readlater/
+  roles/tarsnap/
+  roles/vpn/
+  roles/webmail/
+  roles/xmpp/
+
+rules:
+  # Settings compatible with ansible-lint's own yamllint expectations.
+  comments:
+    min-spaces-from-content: 1
+  comments-indentation: false
+  braces:
+    max-spaces-inside: 1
+  line-length:
+    max: 160
+  octal-values:
+    forbid-implicit-octal: true
+    forbid-explicit-octal: true
+  truthy:
+    allowed-values: ["true", "false"]
+    # GitHub Actions workflows use the key "on".
+    check-keys: false

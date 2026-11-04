@@ -1,0 +1,5 @@
+---
+collections:
+  # community.general >= 8.2 ships the incus connection plugin used by Molecule.
+  - name: community.general
+    version: ">=9.0.0"

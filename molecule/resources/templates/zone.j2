@@ -1,0 +1,24 @@
+; {{ ansible_managed }}
+; Mock zone for Molecule tests.
+$ORIGIN {{ sovtest_domain }}.
+$TTL 300
+@               IN SOA  ns.{{ sovtest_domain }}. hostmaster.{{ sovtest_domain }}. (
+                        2026110401 ; serial
+                        3600       ; refresh
+                        600        ; retry
+                        86400      ; expire
+                        300 )      ; negative TTL
+@               IN NS   ns
+@               IN MX   10 mail
+@               IN A    {{ sovtest_ips.mail }}
+ns              IN A    {{ sovtest_ips.dns }}
+mail            IN A    {{ sovtest_ips.mail }}
+pebble          IN A    {{ sovtest_ips.pebble }}
+mta-sts         IN CNAME mail
+autoconfig      IN CNAME mail
+autodiscover    IN CNAME mail
+@               IN TXT  "v=spf1 mx -all"
+_dmarc          IN TXT  "v=DMARC1; p=reject; rua=mailto:postmaster@{{ sovtest_domain }}"
+_mta-sts        IN TXT  "v=STSv1; id=2026110401"
+_smtp._tls      IN TXT  "v=TLSRPTv1; rua=mailto:tlsrpt@{{ sovtest_domain }}"
+; The DKIM record is added once Rspamd generates the key (Phase 2.4).

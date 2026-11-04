@@ -1,0 +1,6 @@
+---
+# Debian tracks Sovereign supports. "testing" is detected via the "<codename>/sid"
+# string in /etc/debian_version, which Debian Testing and unstable share.
+preflight_supported_tracks:
+  - trixie
+  - testing

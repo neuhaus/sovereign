@@ -1,0 +1,112 @@
+---
+# Create the incus test topology for one Molecule scenario: a dedicated
+# bridge, a profile and one system container per platform with a static IPv4
+# address. Python is installed so Ansible can manage the containers via the
+# community.general.incus connection plugin.
+
+- name: Create incus test instances
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    sovtest: "{{ molecule_yml.provisioner.inventory.group_vars.all }}"
+    sovtest_profile:
+      description: Sovereign Molecule test profile
+      config: {}
+      devices:
+        root:
+          type: disk
+          path: /
+          pool: default
+        eth0:
+          type: nic
+          name: eth0
+          network: "{{ sovtest.sovtest_prefix }}"
+  tasks:
+    - name: Create test network
+      ansible.builtin.command:
+        argv:
+          - incus
+          - network
+          - create
+          - "{{ sovtest.sovtest_prefix }}"
+          - "ipv4.address={{ sovtest.sovtest_subnet }}.1/24"
+          - ipv4.nat=true
+          - ipv6.address=none
+      register: sovtest_network
+      changed_when: sovtest_network.rc == 0
+      failed_when: sovtest_network.rc != 0 and 'already exists' not in sovtest_network.stderr
+
+    - name: Create test profile
+      ansible.builtin.command:
+        argv: [incus, profile, create, "{{ sovtest.sovtest_prefix }}"]
+      register: sovtest_profile_create
+      changed_when: sovtest_profile_create.rc == 0
+      failed_when: sovtest_profile_create.rc != 0 and 'already exists' not in sovtest_profile_create.stderr
+
+    - name: Configure test profile
+      ansible.builtin.command:
+        argv: [incus, profile, edit, "{{ sovtest.sovtest_prefix }}"]
+        stdin: "{{ sovtest_profile | to_yaml }}"
+      changed_when: true
+
+    - name: Create instances with static addresses
+      ansible.builtin.command:
+        argv:
+          - incus
+          - init
+          - "{{ sovtest.sovtest_image }}"
+          - "{{ sovtest.sovtest_prefix }}-{{ item.name }}"
+          - --profile
+          - "{{ sovtest.sovtest_prefix }}"
+          - --device
+          - "eth0,ipv4.address={{ sovtest.sovtest_ips[item.name] }}"
+      loop: "{{ molecule_yml.platforms }}"
+      loop_control:
+        label: "{{ item.name }}"
+      register: sovtest_init
+      changed_when: sovtest_init.rc == 0
+      failed_when: sovtest_init.rc != 0 and 'already exists' not in sovtest_init.stderr
+
+    - name: Start instances
+      ansible.builtin.command:
+        argv: [incus, start, "{{ sovtest.sovtest_prefix }}-{{ item.name }}"]
+      loop: "{{ molecule_yml.platforms }}"
+      loop_control:
+        label: "{{ item.name }}"
+      register: sovtest_start
+      changed_when: sovtest_start.rc == 0
+      failed_when: sovtest_start.rc != 0 and 'already running' not in sovtest_start.stderr
+
+    - name: Install Python once the network is up
+      ansible.builtin.command:
+        argv:
+          - incus
+          - exec
+          - "{{ sovtest.sovtest_prefix }}-{{ item.name }}"
+          - --env
+          - DEBIAN_FRONTEND=noninteractive
+          - --
+          - timeout
+          - "300"
+          - sh
+          - -c
+          - >-
+            until getent hosts deb.debian.org >/dev/null; do sleep 2; done;
+            apt-get -q update && apt-get -qy install python3
+      loop: "{{ molecule_yml.platforms }}"
+      loop_control:
+        label: "{{ item.name }}"
+      changed_when: true
+
+    - name: Write Molecule instance config
+      ansible.builtin.copy:
+        dest: "{{ molecule_instance_config }}"
+        mode: "0600"
+        content: |
+          {% for platform in molecule_yml.platforms %}
+          - instance: {{ platform.name }}
+            address: {{ sovtest.sovtest_prefix }}-{{ platform.name }}
+            user: root
+            connection: community.general.incus
+          {% endfor %}

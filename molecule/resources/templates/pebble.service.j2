@@ -1,0 +1,15 @@
+# {{ ansible_managed }}
+[Unit]
+Description=Pebble ACME test server
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+# Skip artificial validation delays and random nonce rejections in tests.
+Environment=PEBBLE_VA_NOSLEEP=1
+Environment=PEBBLE_WFE_NONCEREJECT=0
+ExecStart=/usr/bin/pebble -config /etc/pebble/pebble-config.json -dnsserver {{ sovtest_ips.dns }}:53
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target

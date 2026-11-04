@@ -1,0 +1,81 @@
+---
+name: CI
+
+on:
+  push:
+    branches:
+      - master
+      - trixie-wip
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: test-requirements.txt
+
+      - name: Install tooling
+        run: |
+          pip install -r test-requirements.txt
+          ansible-galaxy collection install -r requirements.yml
+
+      - name: yamllint
+        run: yamllint --strict .
+
+      - name: ansible-lint
+        run: ansible-lint
+
+  molecule:
+    needs: lint
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        scenario:
+          - trixie
+          - testing
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: test-requirements.txt
+
+      - name: Install tooling
+        run: |
+          pip install -r test-requirements.txt
+          ansible-galaxy collection install -r requirements.yml
+
+      - name: Install and initialise incus
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y incus
+          sudo incus admin init --auto
+          sudo usermod -aG incus-admin "$USER"
+          # Docker on the runner sets the FORWARD policy to DROP, which cuts
+          # the incus containers off from the network.
+          sudo iptables -P FORWARD ACCEPT
+
+      - name: Run Molecule
+        env:
+          SCENARIO: ${{ matrix.scenario }}
+          PY_COLORS: "1"
+          ANSIBLE_FORCE_COLOR: "1"
+        # sg picks up the incus-admin group membership added above.
+        run: sg incus-admin -c "molecule test --scenario-name $SCENARIO"

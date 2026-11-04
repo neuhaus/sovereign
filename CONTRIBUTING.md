@@ -4,11 +4,34 @@
 
 Make sure you agree with the license (GPLv3). See [LICENSE.md](./LICENSE.md) for details.
 
-Code that is committed to the master branch should work with both Debian 8 "Jessie" and Ubuntu 16.04 LTS "Xenial".
+Code on the `trixie-wip` branch targets Debian 13 "Trixie" and Debian Testing. Other distributions are not supported.
 
 ## Development environment
 
-You'll want to set up a [local development environment](https://github.com/sovereign/sovereign/wiki/Development-Environment) so that you don't have to test on a remote server.
+Tests run with [Molecule](https://ansible.readthedocs.io/projects/molecule/) in [incus](https://linuxcontainers.org/incus/) system containers. Each scenario starts three containers on its own bridge: `mail` (the system under test), `dns` (authoritative mock DNS for `sovereign.test`) and `pebble` (a local ACME server).
+
+```sh
+pip install -r test-requirements.txt
+ansible-galaxy collection install -r requirements.yml
+
+yamllint --strict .
+ansible-lint
+
+molecule test --scenario-name trixie
+molecule test --scenario-name testing
+```
+
+Your user needs access to incus (membership in `incus-admin`). During development, `molecule converge` and `molecule verify` keep the containers running between iterations; `molecule destroy` removes them.
+
+CI runs the same steps on GitHub Actions (`.github/workflows/ci.yml`).
+
+## Coding conventions
+
+- Use fully qualified collection names (`ansible.builtin.apt`, not `apt`).
+- New code must pass `ansible-lint` (production profile) and `yamllint --strict`. Legacy paths are excluded in `.ansible-lint` and `.yamllint` until they are removed or rewritten.
+- Use the `sovereign_debian_track` fact (`trixie` or `testing`, set by the `preflight` role) for release-specific logic instead of hard-coding codenames.
+- Every handler that restarts a service validates the configuration first, for example `postfix check`, `doveconf -n`, `nginx -t`, `nft -c -f /etc/nftables.conf`, `unbound-checkconf` or `rspamadm configtest`. Prefer the `validate` parameter of `template`/`copy` where the tool supports checking a single file.
+- A role is done when its tests in `molecule/resources/tests/` are green in CI.
 
 ## Module design principles
 

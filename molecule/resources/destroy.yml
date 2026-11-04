@@ -1,0 +1,37 @@
+---
+- name: Destroy incus test instances
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    sovtest: "{{ molecule_yml.provisioner.inventory.group_vars.all }}"
+  tasks:
+    - name: Delete instances
+      ansible.builtin.command:
+        argv: [incus, delete, --force, "{{ sovtest.sovtest_prefix }}-{{ item.name }}"]
+      loop: "{{ molecule_yml.platforms }}"
+      loop_control:
+        label: "{{ item.name }}"
+      register: sovtest_delete
+      changed_when: sovtest_delete.rc == 0
+      failed_when: sovtest_delete.rc != 0 and 'not found' not in (sovtest_delete.stderr | lower)
+
+    - name: Delete test profile
+      ansible.builtin.command:
+        argv: [incus, profile, delete, "{{ sovtest.sovtest_prefix }}"]
+      register: sovtest_profile_delete
+      changed_when: sovtest_profile_delete.rc == 0
+      failed_when: sovtest_profile_delete.rc != 0 and 'not found' not in (sovtest_profile_delete.stderr | lower)
+
+    - name: Delete test network
+      ansible.builtin.command:
+        argv: [incus, network, delete, "{{ sovtest.sovtest_prefix }}"]
+      register: sovtest_network_delete
+      changed_when: sovtest_network_delete.rc == 0
+      failed_when: sovtest_network_delete.rc != 0 and 'not found' not in (sovtest_network_delete.stderr | lower)
+
+    - name: Reset Molecule instance config
+      ansible.builtin.copy:
+        dest: "{{ molecule_instance_config }}"
+        mode: "0600"
+        content: "[]\n"

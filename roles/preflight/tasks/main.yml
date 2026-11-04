@@ -1,0 +1,42 @@
+---
+# Fail early on unsupported controllers and targets, and expose the Debian
+# track as the global fact `sovereign_debian_track` ("trixie" or "testing").
+# Later roles use it to select apt suites and version-specific logic.
+
+- name: Assert supported ansible-core version
+  ansible.builtin.assert:
+    that:
+      - ansible_version.full is version('2.15', '>=')
+    fail_msg: "Sovereign requires ansible-core >= 2.15, found {{ ansible_version.full }}."
+    quiet: true
+
+- name: Assert target runs Debian
+  ansible.builtin.assert:
+    that:
+      - ansible_facts['distribution'] == 'Debian'
+    fail_msg: "Sovereign only supports Debian, found {{ ansible_facts['distribution'] }}."
+    quiet: true
+
+- name: Read Debian version
+  ansible.builtin.slurp:
+    src: /etc/debian_version
+  register: preflight_debian_version
+
+# sovereign_debian_track is an intentional global fact, hence no role prefix.
+- name: Determine Debian track  # noqa: var-naming[no-role-prefix]
+  ansible.builtin.set_fact:
+    sovereign_debian_track: >-
+      {%- set version = preflight_debian_version.content | b64decode | trim -%}
+      {%- if version is match('^13([.]|$)') -%}trixie
+      {%- elif version is search('/sid$') -%}testing
+      {%- else -%}unsupported
+      {%- endif -%}
+
+- name: Assert supported Debian track
+  ansible.builtin.assert:
+    that:
+      - sovereign_debian_track in preflight_supported_tracks
+    fail_msg: >-
+      Unsupported Debian version '{{ preflight_debian_version.content | b64decode | trim }}'.
+      Supported: {{ preflight_supported_tracks | join(', ') }}.
+    quiet: true

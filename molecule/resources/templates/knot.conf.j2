@@ -1,0 +1,22 @@
+# {{ ansible_managed }}
+# Authoritative mock DNS for Molecule tests.
+
+server:
+    rundir: "/run/knot"
+    user: knot:knot
+    listen: [ 0.0.0.0@53 ]
+
+log:
+  - target: syslog
+    any: info
+
+database:
+    storage: "/var/lib/knot"
+
+template:
+  - id: default
+    storage: "/var/lib/knot"
+    file: "%s.zone"
+
+zone:
+  - domain: {{ sovtest_domain }}
