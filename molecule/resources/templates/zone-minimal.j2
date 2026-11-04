@@ -1,0 +1,8 @@
+; {{ ansible_managed }}
+; Minimal zone for the DNSSEC validation tests.
+$ORIGIN {{ item }}.
+$TTL 300
+@       IN SOA  ns.{{ sovtest_domain }}. hostmaster.{{ sovtest_domain }}. 1 3600 600 86400 300
+@       IN NS   ns.{{ sovtest_domain }}.
+@       IN A    192.0.2.80
+www     IN A    192.0.2.80

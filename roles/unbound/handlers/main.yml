@@ -1,0 +1,14 @@
+---
+# Handlers run in the order they are defined: check the complete configuration
+# (including Debian's unbound.conf.d snippets) first, then restart.
+- name: Check unbound configuration
+  ansible.builtin.command:
+    argv: [unbound-checkconf]
+  changed_when: false
+  listen: Unbound configuration changed
+
+- name: Restart unbound
+  ansible.builtin.systemd_service:
+    name: unbound
+    state: restarted
+  listen: Unbound configuration changed

@@ -1,0 +1,7 @@
+# {{ ansible_managed }}
+# Local Unbound resolver (unbound role). "trust-ad" lets glibc pass the
+# DNSSEC AD flag to applications; Postfix needs it for DANE.
+{% for interface in unbound_interfaces %}
+nameserver {{ interface }}
+{% endfor %}
+options edns0 trust-ad

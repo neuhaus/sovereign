@@ -22,3 +22,9 @@ template:
 
 zone:
   - domain: {{ sovtest_domain }}
+{% for zone in sovtest_signed_zones %}
+  # Signed automatically (default policy: ECDSA P-256). The mail instance trusts
+  # the DS of signed.test; for broken.test it gets a wrong DS on purpose.
+  - domain: {{ zone }}
+    dnssec-signing: on
+{% endfor %}

@@ -1,0 +1,27 @@
+---
+# Unbound runs as a local DNSSEC-validating resolver for the mail server only.
+# Postfix (DANE), Rspamd (SPF/DKIM/DMARC) and the MTA-STS resolver need
+# validated answers; public resolvers often rate-limit or filter DNSBL queries.
+unbound_interfaces:
+  - 127.0.0.1
+
+# Authoritative servers to ask directly for a zone instead of recursing, e.g.
+# for internal zones:
+#
+#   unbound_stub_zones:
+#     - name: internal.example
+#       addresses: [192.0.2.53]
+#       insecure: true     # zone is not DNSSEC-signed below a signed parent
+unbound_stub_zones: []
+
+# Built-in local zones to drop (RFC 6761 names such as "test." are answered
+# locally by default); needed before a stub zone below them can work.
+unbound_nodefault_zones: []
+
+# Extra DNSSEC trust anchor files (zone file format, DS or DNSKEY records) in
+# addition to the root key.
+unbound_trust_anchor_files: []
+
+# Point the system resolver (/etc/resolv.conf) at Unbound. systemd-resolved is
+# disabled when present.
+unbound_manage_resolv_conf: true

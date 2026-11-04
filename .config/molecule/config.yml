@@ -42,7 +42,24 @@ provisioner:
       all:
         sovtest_domain: sovereign.test
         sovtest_image: images:debian/13
+        # DNSSEC-signed mock zones (see prepare.yml): signed.test validates,
+        # broken.test gets a wrong trust anchor and must fail validation.
+        sovtest_signed_zones:
+          - signed.test
+          - broken.test
       mailservers:
+        unbound_nodefault_zones:
+          - test.
+        unbound_stub_zones:
+          - name: "{{ sovtest_domain }}"
+            addresses: ["{{ sovtest_ips.dns }}"]
+            insecure: true
+          - name: signed.test
+            addresses: ["{{ sovtest_ips.dns }}"]
+          - name: broken.test
+            addresses: ["{{ sovtest_ips.dns }}"]
+        unbound_trust_anchor_files:
+          - /etc/unbound/sovtest-anchors.conf
         # dns acts as the monitoring host; pebble must not reach the exporters.
         monitoring_sources:
           - "{{ sovtest_ips.dns }}"

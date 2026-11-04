@@ -1,0 +1,45 @@
+# {{ ansible_managed }}
+#
+# Local DNSSEC-validating resolver. Debian's unbound.conf.d also provides the
+# root trust anchor (root-auto-trust-anchor-file.conf) and the control socket
+# (remote-control.conf).
+
+server:
+{% for interface in unbound_interfaces %}
+    interface: {{ interface }}
+{% endfor %}
+    access-control: 127.0.0.0/8 allow
+    access-control: ::1/128 allow
+
+    hide-identity: yes
+    hide-version: yes
+    harden-glue: yes
+    harden-dnssec-stripped: yes
+    harden-below-nxdomain: yes
+    harden-algo-downgrade: yes
+    qname-minimisation: yes
+    aggressive-nsec: yes
+    val-clean-additional: yes
+    prefetch: yes
+    prefetch-key: yes
+    # Serve stale answers briefly if authoritative servers are unreachable,
+    # instead of failing mail delivery outright.
+    serve-expired: yes
+    serve-expired-ttl: 3600
+{% for zone in unbound_nodefault_zones %}
+    local-zone: "{{ zone }}" nodefault
+{% endfor %}
+{% for file in unbound_trust_anchor_files %}
+    trust-anchor-file: "{{ file }}"
+{% endfor %}
+{% for zone in unbound_stub_zones if zone.insecure | default(false) %}
+    domain-insecure: "{{ zone.name }}"
+{% endfor %}
+{% for zone in unbound_stub_zones %}
+
+stub-zone:
+    name: "{{ zone.name }}"
+{% for address in zone.addresses %}
+    stub-addr: {{ address }}
+{% endfor %}
+{% endfor %}

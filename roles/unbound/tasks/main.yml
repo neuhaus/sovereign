@@ -1,0 +1,89 @@
+---
+- name: Install unbound
+  ansible.builtin.apt:
+    name:
+      - unbound
+      # Initial root trust anchor; Unbound keeps it current (RFC 5011).
+      - dns-root-data
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+
+- name: Configure unbound
+  ansible.builtin.template:
+    src: sovereign.conf.j2
+    dest: /etc/unbound/unbound.conf.d/sovereign.conf
+    owner: root
+    group: root
+    mode: "0644"
+    validate: unbound-checkconf %s
+  notify: Unbound configuration changed
+
+- name: Enable unbound
+  ansible.builtin.systemd_service:
+    name: unbound
+    state: started
+    enabled: true
+
+# The resolver must be up with the new configuration before the system is
+# pointed at it, or the remaining tasks (apt) lose name resolution.
+- name: Apply unbound configuration
+  ansible.builtin.meta: flush_handlers
+
+- name: Wait for unbound to answer
+  ansible.builtin.command:
+    argv: [unbound-control, status]
+  register: unbound_status
+  until: unbound_status.rc == 0
+  retries: 10
+  delay: 2
+  changed_when: false
+
+- name: Point the system resolver at unbound
+  when: unbound_manage_resolv_conf
+  block:
+    - name: Gather service facts
+      ansible.builtin.service_facts:
+
+    # resolved would otherwise keep managing /etc/resolv.conf.
+    - name: Disable systemd-resolved
+      ansible.builtin.systemd_service:
+        name: systemd-resolved
+        state: stopped
+        enabled: false
+        masked: true
+      when: "'systemd-resolved.service' in ansible_facts.services"
+
+    - name: Check /etc/resolv.conf
+      ansible.builtin.stat:
+        path: /etc/resolv.conf
+        follow: false
+      register: unbound_resolv_conf
+
+    - name: Remove the /etc/resolv.conf symlink
+      ansible.builtin.file:
+        path: /etc/resolv.conf
+        state: absent
+      when: unbound_resolv_conf.stat.islnk | default(false)
+
+    - name: Write /etc/resolv.conf
+      ansible.builtin.template:
+        src: resolv.conf.j2
+        dest: /etc/resolv.conf
+        owner: root
+        group: root
+        mode: "0644"
+
+    - name: Check for dhclient
+      ansible.builtin.stat:
+        path: /etc/dhcp/dhclient-enter-hooks.d
+      register: unbound_dhclient_hooks
+
+    - name: Keep dhclient from rewriting /etc/resolv.conf
+      ansible.builtin.copy:
+        src: dhclient-sovereign-nodnsupdate
+        dest: /etc/dhcp/dhclient-enter-hooks.d/sovereign-nodnsupdate
+        owner: root
+        group: root
+        mode: "0644"
+      when: unbound_dhclient_hooks.stat.isdir | default(false)

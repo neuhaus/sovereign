@@ -36,11 +36,36 @@
         mode: "0644"
       notify: Restart knot
 
+    - name: Deploy zones for the DNSSEC tests
+      ansible.builtin.template:
+        src: templates/zone-minimal.j2
+        dest: "/var/lib/knot/{{ item }}.zone"
+        owner: knot
+        group: knot
+        mode: "0644"
+      loop: "{{ sovtest_signed_zones }}"
+      notify: Restart knot
+
     - name: Enable knot
       ansible.builtin.systemd_service:
         name: knot
         state: started
         enabled: true
+
+    - name: Apply knot configuration
+      ansible.builtin.meta: flush_handlers
+
+    # knot generates the signing keys when it loads a zone with
+    # dnssec-signing enabled; keymgr then prints the DS records.
+    - name: Read DS records of the signed zones
+      ansible.builtin.command:
+        argv: [runuser, -u, knot, --, keymgr, -c, /etc/knot/knot.conf, "{{ item }}", ds]
+      loop: "{{ sovtest_signed_zones }}"
+      register: sovtest_ds
+      until: sovtest_ds.rc == 0 and ' DS ' in sovtest_ds.stdout
+      retries: 15
+      delay: 2
+      changed_when: false
 
 - name: Prepare Pebble ACME server
   hosts: pebble
@@ -231,6 +256,34 @@
         state: present
         update_cache: true
         cache_valid_time: 3600
+
+    - name: Create the unbound configuration directory
+      ansible.builtin.file:
+        path: /etc/unbound
+        state: directory
+        owner: root
+        group: root
+        mode: "0755"
+
+    # Trust anchors for the DNSSEC tests (unbound_trust_anchor_files): the real
+    # DS records of signed.test, and deliberately wrong ones for broken.test
+    # (last digest digit changed), which must make validation fail.
+    - name: Install DNSSEC test trust anchors
+      ansible.builtin.copy:
+        dest: /etc/unbound/sovtest-anchors.conf
+        owner: root
+        group: root
+        mode: "0644"
+        content: |
+          {% for result in hostvars['dns'].sovtest_ds.results %}
+          {% for line in result.stdout_lines if ' DS ' in line %}
+          {% if result.item == 'broken.test' %}
+          {{ line[:-1] ~ ('1' if line[-1] == '0' else '0') }}
+          {% else %}
+          {{ line }}
+          {% endif %}
+          {% endfor %}
+          {% endfor %}
 
     - name: Trust the Pebble API CA
       ansible.builtin.copy:

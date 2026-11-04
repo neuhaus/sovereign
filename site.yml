@@ -11,6 +11,7 @@
   gather_facts: true
   roles:
     - role: preflight
+    - role: unbound
     - role: nftables
     - role: fail2ban
     - role: unattended_upgrades

@@ -1,0 +1,6 @@
+# Managed by Ansible (Sovereign unbound role).
+# Keep dhclient from overwriting /etc/resolv.conf, which points at the local
+# Unbound resolver.
+make_resolv_conf() {
+    :
+}
