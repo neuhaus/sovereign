@@ -10,15 +10,9 @@ The Let's Encrypt service uses DNS to look up domains being registered and then 
 
 A single certificate is created using Let's Encrypt with SANs used for the subdomains.  At deploy-time, a script is used to query DNS for known subdomains, build a list of the subset that is registered, and use it when making the certificate request of Let's Encrypt.
 
-Several packages need access to the private key. Not all are run as root. An example is Prosody (XMPP). Such users are added to the ssl-cert group, and /etc/letsencrypt is set up to allow keys to be read by ssl-cert.
-
-Certificates and private keys are backed up using tarsnap.
+Several packages need access to the private key. Not all are run as root. Such users are added to the ssl-cert group, and /etc/letsencrypt is set up to allow keys to be read by ssl-cert.
 
 Certificate renewal is done automatically using cron. The cron script must be aware of private key copies and update them as well. Services that depend on new keys must also be bounced. It is up to roles that rely on keys to modify the cron script (preferably using `lineinfile` or something similar) to accomplish this.
-
-### Testing support
-
-An isolated VM deployed with Vagrant is used for testing. The Let's Encrypt service cannot be used to get keys for it, since it is not bound with DNS. A self-signed wildcard key is therefore used for testing. The wildcard key, certificate, and chain are installed in the same way that Let's Encrypt keys are installed.
 
 ### Alternative approaches
 

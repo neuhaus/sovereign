@@ -5,23 +5,9 @@ exclude_paths:
   # Legacy Sovereign code. These paths are deleted in Phase 1 or rewritten in
   # Phase 2 of the modernization plan; remove each entry as soon as the path is
   # gone or has been rewritten in the new style.
-  - .vagrant/
-  - Vagrantfile
   - site.yml
   - hosts
   - group_vars/
-  - filter_plugins/
-  - tests.py
-  - roles/blog/
   - roles/common/
-  - roles/git/
-  - roles/ircbouncer/
   - roles/mailserver/
-  - roles/monitoring/
-  - roles/news/
-  - roles/owncloud/
-  - roles/readlater/
-  - roles/tarsnap/
-  - roles/vpn/
   - roles/webmail/
-  - roles/xmpp/

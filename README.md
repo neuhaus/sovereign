@@ -1,5 +1,11 @@
-[![Build Status](https://travis-ci.org/sovereign/sovereign.svg?branch=master)](https://travis-ci.org/sovereign/sovereign)
 [![CII Best Practices](https://bestpractices.coreinfrastructure.org/projects/460/badge)](https://bestpractices.coreinfrastructure.org/projects/460)
+
+> **Work in progress:** Sovereign is being rebuilt as a mail-only server for
+> Debian 13 (Trixie) and Debian Testing. The non-mail services, EncFS, Tarsnap
+> and ufw have been removed. Until the new firewall and timer roles land, the
+> playbook deploys **no firewall and no scheduled jobs**: do not use this
+> branch in production. The rest of this README describes the old setup and
+> will be rewritten.
 
 Introduction
 ============
@@ -23,26 +29,12 @@ What do you get if you point Sovereign at a server? All kinds of good stuff!
 -   Virtual domains for your email, backed by [PostgreSQL](http://www.postgresql.org/).
 -   Spam fighting via [Rspamd](https://www.rspamd.com/).
 -   Mail server verification using [DKIM](http://www.dkim.org/) and [DMARC](http://www.dmarc.org/) so the Internet knows your mailserver is legit.
--   Secure on-disk storage for email and more via [EncFS](http://www.arg0.net/encfs).
 -   Webmail via [Roundcube](http://www.roundcube.net/).
 -   Mobile push notifications via [Z-Push](http://z-push.sourceforge.net/soswp/index.php?pages_id=1&t=home).
 -   Email client [automatic configuration](https://developer.mozilla.org/en-US/docs/Mozilla/Thunderbird/Autoconfiguration).
--   Jabber/[XMPP](http://xmpp.org/) instant messaging via [Prosody](http://prosody.im/).
--   An RSS Reader via [Selfoss](http://selfoss.aditu.de/).
--   [CalDAV](https://en.wikipedia.org/wiki/CalDAV) and [CardDAV](https://en.wikipedia.org/wiki/CardDAV) to keep your calendars and contacts in sync, via [ownCloud](http://owncloud.org/).
--   Your own private storage cloud via [ownCloud](http://owncloud.org/).
--   Your own VPN server via [OpenVPN](http://openvpn.net/index.php/open-source.html).
--   An IRC bouncer via [ZNC](http://wiki.znc.in/ZNC).
--   [Monit](http://mmonit.com/monit/) to keep everything running smoothly (and alert you when it’s not).
--   [collectd](http://collectd.org/) to collect system statistics.
--   Web hosting (ex: for your blog) via [Apache](https://www.apache.org/).
--   Firewall management via [Uncomplicated Firewall (ufw)](https://wiki.ubuntu.com/UncomplicatedFirewall).
 -   Intrusion prevention via [fail2ban](http://www.fail2ban.org/) and rootkit detection via [rkhunter](http://rkhunter.sourceforge.net).
 -   SSH configuration preventing root login and insecure password authentication
 -   [RFC6238](http://tools.ietf.org/html/rfc6238) two-factor authentication compatible with [Google Authenticator](http://en.wikipedia.org/wiki/Google_Authenticator) and various hardware tokens
--   Nightly backups to [Tarsnap](https://www.tarsnap.com/).
--   Git hosting via [cgit](http://git.zx2c4.com/cgit/about/) and [gitolite](https://github.com/sitaramc/gitolite).
--   Read-it-later via [Wallabag](https://www.wallabag.org/)
 -   A bunch of nice-to-have tools like [mosh](http://mosh.mit.edu) and [htop](http://htop.sourceforge.net) that make life with a server a little easier.
 
 Don’t want one or more of the above services? Comment out the relevant role in `site.yml`. Or get more granular and comment out the associated `include:` directive in one of the playbooks.
@@ -55,7 +47,6 @@ What You’ll Need
 
 1.  A VPS (or bare-metal server if you wanna ball hard). My VPS is hosted at [Linode](http://www.linode.com/?r=45405878277aa04ee1f1d21394285da6b43f963b). You’ll probably want at least 512 MB of RAM between Apache, Solr, and PostgreSQL. Mine has 1024.
 2.  [64-bit Debian 8.3](http://www.debian.org/) or an equivalent Linux distribution. (You can use whatever distro you want, but deviating from Debian will require more tweaks to the playbooks. See Ansible’s different [packaging](http://docs.ansible.com/ansible/list_of_packaging_modules.html) modules.)
-3.  A [Tarsnap](http://www.tarsnap.com) account with some credit in it. You could comment this out if you want to use a different backup service. Consider paying your hosting provider for backups or using an additional backup service for redundancy.
 
 You do not need to acquire an SSL certificate.  The SSL certificates you need will be obtained from [Let's Encrypt](https://letsencrypt.org/) automatically when you deploy your server.
 
@@ -71,17 +62,7 @@ The following steps are done on the remote server by `ssh`ing into it and runnin
 
     apt-get install sudo python
 
-### 2. Get a Tarsnap machine key
-
-If you haven’t already, [download and install Tarsnap](https://www.tarsnap.com/download.html), or use `brew install tarsnap` if you use [Homebrew](http://brew.sh).
-
-Create a new machine key for your server:
-
-    tarsnap-keygen --keyfile roles/tarsnap/files/decrypted_tarsnap.key --user me@example.com --machine example.com
-
-Download a copy of this key and keep it somewhere safe!  There's no point having backups if you can't retrieve them when needed.
-
-### 3. Prep the server
+### 2. Prep the server
 
 For goodness sake, change the root password:
 
@@ -111,18 +92,14 @@ Ansible (the tool setting up your server) runs locally on your computer and send
     
     git clone https://github.com/sovereign/sovereign.git
 
-### 4. Configure your installation
+### 3. Configure your installation
 
 Modify the settings in the `group_vars/sovereign` folder to your liking. If you want to see how they’re used in context, just search for the corresponding string.
 All of the variables in `group_vars/sovereign` must be set for sovereign to function.
 
-For Git hosting, copy your public key into place:
+Finally, replace the `host.example.net` in the file `hosts`. If your SSH daemon listens on a non-standard port, add a colon and the port number after the IP address.
 
-	cp ~/.ssh/id_rsa.pub roles/git/files/gitolite.pub
-
-Finally, replace the `host.example.net` in the file `hosts`. If your SSH daemon listens on a non-standard port, add a colon and the port number after the IP address. In that case you also need to add your custom port to the task `Set firewall rules for web traffic and SSH` in the file `roles/common/tasks/ufw.yml`.
-
-### 5. Set up DNS
+### 4. Set up DNS
 
 If you’ve just bought a new domain name, point it at [Linode’s DNS Manager](https://library.linode.com/dns-manager) or similar. Most VPS services (and even some domain registrars) offer a managed DNS service that you can use for this at no charge. If you’re using an existing domain that’s already managed elsewhere, you can probably just modify a few records.
 
@@ -130,14 +107,9 @@ Create `A` or `CNAME` records which point to your server's IP address:
 
 * `example.com`
 * `mail.example.com`
-* `www.example.com` (for Web hosting)
 * `autoconfig.example.com` (for email client automatic configuration)
-* `read.example.com` (for Wallabag)
-* `news.example.com` (for Selfoss)
-* `cloud.example.com` (for ownCloud)
-* `git.example.com` (for cgit)
 
-### 6. Run the Ansible Playbooks
+### 5. Run the Ansible Playbooks
 
 First, make sure you’ve [got Ansible 1.9.3+ installed](http://docs.ansible.com/intro_installation.html#getting-ansible).
 
@@ -147,15 +119,15 @@ To run the whole dang thing:
     
 If you chose to make a passwordless sudo deploy user, you can omit the `--ask-sudo-pass` argument.
 
-To run just one or more piece, use tags. I try to tag all my includes for easy isolated development. For example, to focus in on your firewall setup:
+To run just one or more piece, use tags. I try to tag all my includes for easy isolated development. For example, to focus in on your Postfix setup:
 
-    ansible-playbook -i ./hosts --tags=ufw site.yml
+    ansible-playbook -i ./hosts --tags=postfix site.yml
 
 You might find that it fails at one point or another. This is probably because something needs to be done manually, usually because there’s no good way of automating it. Fortunately, all the tasks are clearly named so you should be able to find out where it stopped. I’ve tried to add comments where manual intervention is necessary.
 
 The `dependencies` tag just installs dependencies, performing no other operations. The tasks associated with the `dependencies` tag do not rely on the user-provided settings that live in `group_vars/sovereign`. Running the playbook with the `dependencies` tag is particularly convenient for working with Docker images.
 
-### 7. Finish DNS set-up
+### 6. Finish DNS set-up
 
 Create an `MX` record for `example.com` which assigns `mail.example.com` as the domain’s mail server.
 
@@ -167,27 +139,6 @@ For DMARC you'll also need to add a `txt` record. The name field should be `_dma
 
 Set up SPF and reverse DNS [as per this post](http://sealedabstract.com/code/nsa-proof-your-e-mail-in-2-hours/). Make sure to validate that it’s all working, for example, by sending an email to <a href="mailto:check-auth@verifier.port25.com">check-auth@verifier.port25.com</a> and reviewing the report that will be emailed back to you.
 
-### 8. Miscellaneous Configuration
-
-Sign in to the ZNC web interface and set things up to your liking. It isn’t exposed through the firewall, so you must first set up an SSH tunnel:
-
-	ssh deploy@example.com -L 6643:localhost:6643
-
-Then proceed to http://localhost:6643 in your web browser.
-
-Similarly, to access the server monitoring page, use another SSH tunnel:
-
-    ssh deploy@example.com -L 2812:localhost:2812
-
-Again proceeding to http://localhost:2812 in your web browser.
-
-Finally, sign into ownCloud with a new administrator account to set it
-up. You should select PostgreSQL as the configuration backend. Use
-`owncloud` as the database user and the database name. For the
-database password ansible has created a set of random passwords for
-each service and stores them in your local folder `secret`, use the
-one in the file `owncloud_db_password`.
-
 How To Use Your New Personal Cloud
 ----------------------------------
 
@@ -197,14 +148,6 @@ Troubleshooting
 ---------------
 
 If you run into an errors, please check the [wiki page](https://github.com/sovereign/sovereign/wiki/Troubleshooting). If the problem you encountered, is not listed, please go ahead and [create an issue](https://github.com/sovereign/sovereign/issues/new). If you already have a bugfix and/or workaround, just put them in the issue and the wiki page.
-
-### Reboots
-
-You will need to manually enter the password for any encrypted volumes on reboot. This is not Sovereign-specific, but rather a function of how EncFS works. This will necessitate SSHing into your machine after reboot, or accessing it via a console interface if one is available to you. Once you're in, run this:
-
-    encfs /encrypted /decrypted --public
-
-It is possible that some daemons may need to be restarted after you enter your password for the encrypted volume(s). Some services may stall out while looking for resources that will only be available once the `/decrypted` volume is available and visible to daemon user accounts.
 
 IRC
 ===

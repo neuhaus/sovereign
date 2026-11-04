@@ -1,3 +1,2 @@
 # Controller requirements for deploying Sovereign.
 ansible-core>=2.15
-passlib

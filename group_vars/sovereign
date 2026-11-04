@@ -38,23 +38,3 @@ mail_virtual_aliases:
 # timezone
 # common_timezone will be used in the common and mailserver roles
 common_timezone: 'Etc/UTC'
-
-# znc
-irc_nick: (required)
-irc_ident: (required)
-irc_realname: (required)
-irc_quitmsg: (required)
-irc_password: TODO
-
-# xmpp
-prosody_admin: "{{ admin_email }}"
-prosody_virtual_domain: "{{ domain }}"
-prosody_accounts:
-  - name: "{{ main_user_name }}"
-    password: TODO
-
-# openvpn
-openvpn_clients:
-  - laptop
-  - phone
-  - tablet

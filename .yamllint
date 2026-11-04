@@ -3,22 +3,11 @@ extends: default
 
 # Legacy paths, see .ansible-lint for why they are excluded.
 ignore: |
-  .vagrant/
   site.yml
   group_vars/
-  roles/blog/
   roles/common/
-  roles/git/
-  roles/ircbouncer/
   roles/mailserver/
-  roles/monitoring/
-  roles/news/
-  roles/owncloud/
-  roles/readlater/
-  roles/tarsnap/
-  roles/vpn/
   roles/webmail/
-  roles/xmpp/
 
 rules:
   # Settings compatible with ansible-lint's own yamllint expectations.

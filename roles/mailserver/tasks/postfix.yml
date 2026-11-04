@@ -5,7 +5,6 @@
     - postfix
     - postfix-pcre
     - postfix-pgsql
-    - postgrey
     - python-psycopg2
     - sasl2-bin
   tags:
@@ -63,11 +62,3 @@
     - pgsql-virtual-mailbox-domains.cf
     - pgsql-virtual-mailbox-maps.cf
   notify: restart postfix
-
-- name: Set firewall rules for postfix
-  ufw: rule=allow port={{ item }} proto=tcp
-  with_items:
-    - smtp
-    - ssmtp
-    - submission
-  tags: ufw

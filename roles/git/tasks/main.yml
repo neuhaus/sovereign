@@ -1,4 +1,0 @@
-- import_tasks: gitolite.yml
-  tags: gitolite
-- import_tasks: cgit.yml
-  tags: cgit
