@@ -1,159 +1,114 @@
-[![CII Best Practices](https://bestpractices.coreinfrastructure.org/projects/460/badge)](https://bestpractices.coreinfrastructure.org/projects/460)
+Sovereign
+=========
 
-> **Work in progress:** Sovereign is being rebuilt as a mail-only server for
-> Debian 13 (Trixie) and Debian Testing. The non-mail services, EncFS, Tarsnap
-> and ufw have been removed. `site.yml` sets up the base system (Unbound
-> DNSSEC resolver, nftables firewall, fail2ban, unattended-upgrades, systemd
-> timers, node exporter), the TLS certificate (nginx, certbot) and the mail
-> stack (SQLite mail database, Postfix, Dovecot 2.4, Rspamd, postsrsd,
-> MTA-STS, client autoconfiguration, Roundcube webmail, Radicale
-> CalDAV/CardDAV). Backups are still missing. Do not use this branch in production yet. The rest of this
-> README describes the old setup and will be rewritten; see
-> [docs/STATUS.md](docs/STATUS.md) and [docs/PLAN.md](docs/PLAN.md).
+Sovereign is a set of [Ansible](https://www.ansible.com/) playbooks that turn a small Debian server into a secure, low-maintenance mail server of your own, with webmail, calendars and contacts: SSH in every few weeks, and otherwise forget about it.
 
-Introduction
-============
+> **Status:** rebuilt for Debian 13 "Trixie" and Debian Testing on the `trixie-wip` branch. All of it is tested in containers on both releases, but it has not run on a real server yet. Try it on one you can afford to lose. Progress: [docs/STATUS.md](docs/STATUS.md).
 
-Sovereign is a set of [Ansible](http://ansible.com) playbooks that you can use to build and maintain your own [personal cloud](http://www.urbandictionary.com/define.php?term=clown%20computing) based entirely on open source software, so you’re in control.
+What you get
+------------
 
-If you’ve never used Ansible before, you might find these playbooks useful to learn from, since they show off a fair bit of what the tool can do.
+- **IMAP** with Dovecot 2.4: full-text search, mail encrypted at rest (mail_crypt), Sieve filters.
+- **SMTP** with Postfix: TLS 1.2/1.3 only, outbound DANE and MTA-STS, plus addressing, SRS for forwarded mail.
+- **Spam filtering** with Rspamd: DKIM, ARC, SPF, DMARC, Bayes learning when mail moves into or out of Junk, rejection of dangerous attachments, outbound rate limits.
+- **Webmail** with Roundcube, behind HTTP basic auth, where users also change their password and filters.
+- **Calendars and contacts** with Radicale, including shared ones.
+- **Encrypted offsite backups** with Restic, and a tested restore.
+- **Hardening and upkeep:** nftables firewall, fail2ban, a DNSSEC-validating resolver, automatic security updates, Prometheus metrics.
+- **Several mail domains** on one server, each with its own mailboxes and DKIM key.
+- **Administration as code:** domains, mailboxes and aliases on the server follow one YAML file exactly.
 
-The original author's [background and motivations](https://github.com/sovereign/sovereign/wiki/Background-and-Motivations) might be of interest. tl;dr: frustrations with Google Apps and concerns about privacy and long-term support.
-
-Sovereign offers useful cloud services while being reasonably secure and low-maintenance. Use it to set up your server, SSH in every couple weeks, but mostly forget about it.
-
-Services Provided
------------------
-
-What do you get if you point Sovereign at a server? All kinds of good stuff!
-
--   [IMAP](https://en.wikipedia.org/wiki/Internet_Message_Access_Protocol) over SSL via [Dovecot](http://dovecot.org/), complete with full text search provided by [Solr](https://lucene.apache.org/solr/).
--   [POP3](https://en.wikipedia.org/wiki/Post_Office_Protocol) over SSL, also via Dovecot
--   [SMTP](https://en.wikipedia.org/wiki/Simple_Mail_Transfer_Protocol) over SSL via Postfix, including a nice set of [DNSBLs](https://en.wikipedia.org/wiki/DNSBL) to discard spam before it ever hits your filters.
--   Virtual domains for your email, backed by [PostgreSQL](http://www.postgresql.org/).
--   Spam fighting via [Rspamd](https://www.rspamd.com/).
--   Mail server verification using [DKIM](http://www.dkim.org/) and [DMARC](http://www.dmarc.org/) so the Internet knows your mailserver is legit.
--   Webmail via [Roundcube](http://www.roundcube.net/).
--   Mobile push notifications via [Z-Push](http://z-push.sourceforge.net/soswp/index.php?pages_id=1&t=home).
--   Email client [automatic configuration](https://developer.mozilla.org/en-US/docs/Mozilla/Thunderbird/Autoconfiguration).
--   Intrusion prevention via [fail2ban](http://www.fail2ban.org/) and rootkit detection via [rkhunter](http://rkhunter.sourceforge.net).
--   SSH configuration preventing root login and insecure password authentication
--   [RFC6238](http://tools.ietf.org/html/rfc6238) two-factor authentication compatible with [Google Authenticator](http://en.wikipedia.org/wiki/Google_Authenticator) and various hardware tokens
--   A bunch of nice-to-have tools like [mosh](http://mosh.mit.edu) and [htop](http://htop.sourceforge.net) that make life with a server a little easier.
-
-Don’t want one or more of the above services? Comment out the relevant role in `site.yml`. Or get more granular and comment out the associated `include:` directive in one of the playbooks.
-
-Usage
-=====
-
-What You’ll Need
-----------------
-
-1.  A VPS (or bare-metal server if you wanna ball hard). My VPS is hosted at [Linode](http://www.linode.com/?r=45405878277aa04ee1f1d21394285da6b43f963b). You’ll probably want at least 512 MB of RAM between Apache, Solr, and PostgreSQL. Mine has 1024.
-2.  [64-bit Debian 8.3](http://www.debian.org/) or an equivalent Linux distribution. (You can use whatever distro you want, but deviating from Debian will require more tweaks to the playbooks. See Ansible’s different [packaging](http://docs.ansible.com/ansible/list_of_packaging_modules.html) modules.)
-
-You do not need to acquire an SSL certificate.  The SSL certificates you need will be obtained from [Let's Encrypt](https://letsencrypt.org/) automatically when you deploy your server.
-
+It fits on a server with about 2 GB of RAM. It deliberately has no admin web interface, database server or local virus scanner.
 
 Installation
 ------------
 
-## On the remote server
+**You need** a server running Debian 13 or Testing, preferably with an encrypted disk ([docs/INSTALL.md](docs/INSTALL.md)), a domain, a provider that lets you set the reverse DNS and does not block port 25, a place for backups, and a computer with Ansible.
 
-The following steps are done on the remote server by `ssh`ing into it and running these commands.
+**1. Prepare the server.** Create a user for Ansible with your SSH key:
 
-### 1. Install required packages e.g `aptitude` is required on Debian
-
-    apt-get install sudo python
-
-### 2. Prep the server
-
-For goodness sake, change the root password:
-
-    passwd
-
-Create a user account for Ansible to do its thing through:
-
-    useradd --create-home deploy
-    passwd deploy
-
-Authorize your ssh key if you want passwordless ssh login (optional):
-
-    mkdir /home/deploy/.ssh
-    chmod 700 /home/deploy/.ssh
-    nano /home/deploy/.ssh/authorized_keys
-    chmod 400 /home/deploy/.ssh/authorized_keys
-    chown deploy:deploy /home/deploy -R
+    apt install sudo python3
+    adduser --disabled-password deploy
     echo 'deploy ALL=(ALL) NOPASSWD: ALL' > /etc/sudoers.d/deploy
+    install -d -o deploy -g deploy -m 700 /home/deploy/.ssh
+    # put your public key into /home/deploy/.ssh/authorized_keys, owned by deploy
 
-Your new account will be automatically set up for passwordless `sudo`. Or you can just add your `deploy` user to the sudo group.
+**2. Configure.** On your computer:
 
-    adduser deploy sudo
+    git clone -b trixie-wip https://github.com/neuhaus/sovereign.git
+    cd sovereign
+    pip install -r requirements.txt
 
-## On your local machine
+Set your server's address in `inventory/hosts` and your settings in `inventory/group_vars/mailservers.yml`. The comments there explain each one. Password hashes come from `doveadm pw -s ARGON2ID` (Dovecot on any machine, or on the server after the first run) and `openssl passwd -6`. Keep the restic password in [Ansible Vault](https://docs.ansible.com/ansible/latest/vault_guide/index.html) and **a copy of it somewhere other than this server** ([docs/BACKUP.md](docs/BACKUP.md)).
 
-Ansible (the tool setting up your server) runs locally on your computer and sends commands to the remote server. Download this repository somewhere on your machine, either through `Clone or Download > Download ZIP` above, `wget`, or `git` as below
-    
-    git clone https://github.com/sovereign/sovereign.git
+**3. Publish the first DNS records** (the A/AAAA and CNAME rows below), and wait until they resolve: the certificate is requested over HTTP for all those names.
 
-### 3. Configure your installation
+**4. Run it:**
 
-Modify the settings in the `group_vars/sovereign` folder to your liking. If you want to see how they’re used in context, just search for the corresponding string.
-All of the variables in `group_vars/sovereign` must be set for sovereign to function.
+    ansible-playbook -i inventory site.yml --ask-vault-pass
 
-Finally, replace the `host.example.net` in the file `hosts`. If your SSH daemon listens on a non-standard port, add a colon and the port number after the IP address.
+**5. Publish the remaining DNS records**, using the values the first run generated.
 
-### 4. Set up DNS
+DNS records
+-----------
 
-If you’ve just bought a new domain name, point it at [Linode’s DNS Manager](https://library.linode.com/dns-manager) or similar. Most VPS services (and even some domain registrars) offer a managed DNS service that you can use for this at no charge. If you’re using an existing domain that’s already managed elsewhere, you can probably just modify a few records.
+For the mail domain `example.org` and mail host `mail.example.org`:
 
-Create `A` or `CNAME` records which point to your server's IP address:
+| Name | Type | Value | When |
+|---|---|---|---|
+| `mail.example.org` | A / AAAA | the server's addresses | before the first run |
+| `mta-sts`, `autoconfig`, `autodiscover`, `dav` `.example.org` | CNAME | `mail.example.org` | before the first run |
+| `example.org` | MX | `10 mail.example.org` | before the first run |
+| the server's addresses | PTR | `mail.example.org`, in your provider's panel | before sending mail |
+| `example.org` | TXT | `v=spf1 mx -all` | before sending mail |
+| `_dmarc.example.org` | TXT | `v=DMARC1; p=reject; rua=mailto:postmaster@example.org` | before sending mail |
+| `sovereign._domainkey.example.org` | TXT | contents of `/var/lib/rspamd/dkim/example.org.sovereign.txt` | after the first run |
+| `_mta-sts.example.org` | TXT | `v=STSv1; id=<id>`, id from `/var/lib/sovereign/mta-sts-id` | after the first run |
+| `_smtp._tls.example.org` | TXT | `v=TLSRPTv1; rua=mailto:postmaster@example.org` | any time |
+| `_25._tcp.mail.example.org` | TLSA | `3 1 1 <hash>`, see below; needs a DNSSEC-signed zone | after the first run |
 
-* `example.com`
-* `mail.example.com`
-* `autoconfig.example.com` (for email client automatic configuration)
+One server can host several mail domains. Each additional one needs its own MX, SPF, DMARC, DKIM, `_mta-sts`, `mta-sts`, `autoconfig` and `autodiscover` records, and those names in `certbot_domains`. See [Multiple domains](docs/ADMINISTRATION.md#multiple-domains), also for what the domains share.
 
-### 5. Run the Ansible Playbooks
+The TLSA hash covers the certificate's public key, which stays the same across renewals:
 
-First, make sure you’ve [got Ansible 1.9.3+ installed](http://docs.ansible.com/intro_installation.html#getting-ansible).
+    openssl x509 -in /etc/letsencrypt/live/mail.example.org/cert.pem -noout -pubkey \
+      | openssl pkey -pubin -outform DER | sha256sum
 
-To run the whole dang thing:
+Rotating that key: [docs/ADMINISTRATION.md](docs/ADMINISTRATION.md#rotating-the-certificate-key).
 
-    ansible-playbook -i ./hosts --ask-sudo-pass site.yml
-    
-If you chose to make a passwordless sudo deploy user, you can omit the `--ask-sudo-pass` argument.
+Network ports
+-------------
 
-To run just one or more piece, use tags. I try to tag all my includes for easy isolated development. For example, to focus in on your Postfix setup:
+| Port | Service |
+|---|---|
+| TCP 22 | SSH |
+| TCP 25 | SMTP between servers |
+| TCP 80 | ACME challenges, redirect to HTTPS |
+| TCP 143 | IMAP with STARTTLS |
+| TCP 443 | Webmail, CalDAV/CardDAV, MTA-STS policy, client autoconfiguration |
+| TCP 587 | Mail submission with STARTTLS |
+| TCP 993 | IMAP over TLS |
+| TCP 4190 | ManageSieve (filters) |
+| TCP 9100, 9900 | Metrics, only from `monitoring_sources` |
 
-    ansible-playbook -i ./hosts --tags=postfix site.yml
+Everything else is dropped.
 
-You might find that it fails at one point or another. This is probably because something needs to be done manually, usually because there’s no good way of automating it. Fortunately, all the tasks are clearly named so you should be able to find out where it stopped. I’ve tried to add comments where manual intervention is necessary.
+Using it
+--------
 
-The `dependencies` tag just installs dependencies, performing no other operations. The tasks associated with the `dependencies` tag do not rely on the user-provided settings that live in `group_vars/sovereign`. Running the playbook with the `dependencies` tag is particularly convenient for working with Docker images.
+Mail clients mostly configure themselves through autoconfiguration. The login is always the full mail address.
 
-### 6. Finish DNS set-up
+- **Webmail:** `https://mail.example.org`, first the basic auth credentials, then the mailbox login. Users change their password under Settings.
+- **Calendars and contacts:** `https://dav.example.org`, with the mail address and password. Shared collections are at `https://dav.example.org/shared/<name>/`.
+- **Phones and other devices:** use an app password; it can be revoked on its own, and it does not work in the webmail.
 
-Create an `MX` record for `example.com` which assigns `mail.example.com` as the domain’s mail server.
+More documentation
+------------------
 
-To ensure your emails pass DKIM checks you need to add a `txt` record. The name field will be `default._domainkey.EXAMPLE.COM.` The value field contains the public key used by DKIM. The exact value needed can be found in the file `/var/lib/rspamd/dkim/EXAMPLE.COM.default.txt`. It will look something like this:
+- [docs/INSTALL.md](docs/INSTALL.md): disk encryption and remote unlock
+- [docs/ADMINISTRATION.md](docs/ADMINISTRATION.md): users, passwords, aliases, shared calendars, operations
+- [docs/BACKUP.md](docs/BACKUP.md): backups and disaster recovery
+- [docs/MIGRATION.md](docs/MIGRATION.md): moving from a legacy Sovereign server
+- [CONTRIBUTING.md](CONTRIBUTING.md): development and tests
 
-    v=DKIM1; k=rsa; p=MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQDKKAQfMwKVx+oJripQI+Ag4uTwYnsXKjgBGtl7Tk6UMTUwhMqnitqbR/ZQEZjcNolTkNDtyKZY2Z6LqvM4KsrITpiMbkV1eX6GKczT8Lws5KXn+6BHCKULGdireTAUr3Id7mtjLrbi/E3248Pq0Zs39hkDxsDcve12WccjafJVwIDAQAB
-
-For DMARC you'll also need to add a `txt` record. The name field should be `_dmarc.EXAMPLE.COM` and the value should be `v=DMARC1; p=none`. More info on DMARC can be found [here](https://dmarc.org).
-
-Set up SPF and reverse DNS [as per this post](http://sealedabstract.com/code/nsa-proof-your-e-mail-in-2-hours/). Make sure to validate that it’s all working, for example, by sending an email to <a href="mailto:check-auth@verifier.port25.com">check-auth@verifier.port25.com</a> and reviewing the report that will be emailed back to you.
-
-How To Use Your New Personal Cloud
-----------------------------------
-
-We’re collecting known-good client setups [on our wiki](https://github.com/sovereign/sovereign/wiki/Usage).
-
-Troubleshooting
----------------
-
-If you run into an errors, please check the [wiki page](https://github.com/sovereign/sovereign/wiki/Troubleshooting). If the problem you encountered, is not listed, please go ahead and [create an issue](https://github.com/sovereign/sovereign/issues/new). If you already have a bugfix and/or workaround, just put them in the issue and the wiki page.
-
-Instant messaging
------------------
-
-Ask questions and provide feedback on Matrix in [#sovereign:ping.de](https://matrix.to/#/%23sovereign:ping.de).
+Questions and feedback on Matrix: [#sovereign:ping.de](https://matrix.to/#/%23sovereign:ping.de).

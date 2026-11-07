@@ -154,15 +154,17 @@ Implementation order: 2.1, 2.2, the certificate part of 2.5, 2.3, 2.4, rest of 2
 - **Restic** for encrypted offsite backups; `restic_repository` and `restic_password` are required, so no server runs without backups by accident.
 - **systemd timers/services** (through the `systemd_timers` role) for daily backups and weekly retention pruning.
 - Backed up: `/var/vmail`, consistent copies of the mail and Roundcube databases, the mail_crypt keys, DKIM keys, Radicale data, `/etc/letsencrypt` (DANE depends on the key) and the postsrsd secret. Not backed up: the FTS index, which Dovecot rebuilds, and Rspamd's Bayes data.
+- **Append-only targets:** with `restic_prune_enabled: false` the server needs no delete rights on the repository and has no prune timer, so a compromised server cannot delete its backups. Pruning then runs from a trusted machine. Off by default, because it needs a second machine.
 - The time of the last successful backup is a node exporter metric (`sovereign_backup_last_success_timestamp_seconds`), for alerting on backups that stop.
 
-**Tests:** backup to a local test repository succeeds and contains the keys and databases; restoring a mailbox and reading it back through Dovecot (including mail_crypt decryption) succeeds; the restored mail database is intact; pruning works; the metric is exported.
+**Tests:** backup to a local test repository succeeds and contains the keys and databases; restoring a mailbox and reading it back through Dovecot (including mail_crypt decryption) succeeds; the restored mail database is intact; pruning works; the metric is exported; with an append-only server, backups work and root on the mail server cannot delete them, through restic or the API.
 
 ---
 
 ## Phase 3: Declarative Mail Administration (GitOps)
 
-- The `maildb` role (written in Phase 2.3) acts strictly on `group_vars/mailservers.yml`: `mail_domains`, `mail_mailboxes` (with `app_passwords`) and `mail_aliases`.
+- The `maildb` role (written in Phase 2.3) acts strictly on `inventory/group_vars/mailservers.yml`: `mail_domains`, `mail_mailboxes` (with `app_passwords`) and `mail_aliases`.
+- **Multiple mail domains** are a core feature: `alice@` on two domains are separate mailboxes, and missing certificate names stop the run. Tests cover delivery, passwords and sender rules per domain, DKIM with the right key, SRS, all web endpoints, Radicale, and removing a domain.
 - Domains, mailboxes, App-Specific Passwords and aliases **precisely mirror** the code state, including removal of entries no longer defined; manual changes in the database are reverted on the next run.
 - **Password self-service:** users change their own main password in Roundcube (password plugin). Ansible sets the initial password hash when it creates a mailbox and does not touch it afterwards; everything else (domains, mailboxes, aliases, App-Specific Passwords) stays exactly mirrored. Roundcube therefore gets write access to the mail database (only it and Ansible write); App-Specific Passwords remain admin-managed via `group_vars`.
 - **Password reset:** a new hash for a mailbox in the inventory replaces the password once, also one the user changed, and disconnects the user's open sessions. The database remembers the hash last applied (`inventory_password`), which is what the role compares; there is no flag to remove afterwards.
@@ -190,7 +192,7 @@ Rewrite the README and Wiki to reflect the modernized, bare-metal deployment str
   - Document the deprecation of EncFS.
   - Guide for provisioning Debian 13 with native **LUKS full-disk encryption**, including remote unlocking via dropbear-initramfs (also needed after automatic reboots).
 - **GitOps administration guide:**
-  - Managing users, domains, aliases and App-Specific Passwords via `group_vars/mailservers.yml`.
+  - Managing users, domains, aliases and App-Specific Passwords via `inventory/group_vars/mailservers.yml`.
   - Generating Argon2id password hashes locally and securely (`doveadm pw -s ARGON2ID`), and generating app passwords in the id-prefix format.
   - Defining shared calendars and address books via the Radicale rights configuration.
 - **DNS records cheat sheet** (tabular checklist):
@@ -219,7 +221,7 @@ Rewrite the README and Wiki to reflect the modernized, bare-metal deployment str
   - **Encryption keys:** explicit warning to back up the Dovecot mail_crypt EC private key (`ecprivkey.pem`) alongside the Restic password.
   - **Restoration:** step-by-step disaster recovery for `/var/vmail`, the database and decryption with Dovecot's tools (mirrors the Phase 4 recovery test).
 - **Manual migration guide (legacy Sovereign → new server):** there is no automated upgrade path; the new server is a fresh install and accounts are moved manually.
-  - **Accounts:** define domains, users and aliases in `group_vars/mailservers.yml`. Old password hashes are not converted; every user gets a new Argon2id password (and new App-Specific Passwords where needed).
+  - **Accounts:** define domains, users and aliases in `inventory/group_vars/mailservers.yml`. Old password hashes are not converted; every user gets a new Argon2id password (and new App-Specific Passwords where needed).
   - **Mailbox data:** copy mail with `doveadm backup` / `doveadm sync` using the `imapc` backend against the old server (per user, via master user or the user's credentials). Mail must go through Dovecot so that mail_crypt encrypts it on write; copying Maildir files directly would leave them unencrypted.
   - **Verification:** compare message and folder counts per mailbox (`doveadm mailbox status`) between old and new server.
   - **Sieve filters:** export the old scripts and install them via ManageSieve; check for syntax differences.
@@ -227,6 +229,56 @@ Rewrite the README and Wiki to reflect the modernized, bare-metal deployment str
   - **Cutover:** lower DNS TTLs in advance, run a final delta sync, then switch MX, autodiscover and related records and update the DKIM and TLSA records.
 - **Developer guide:** running the Molecule scenarios locally with incus, and how the GitHub Actions workflow is structured.
 - **Role design documents:** decide whether each new role gets a design description (as CONTRIBUTING.md asks) or the rule is dropped in favour of the in-file comments and commit messages.
+
+---
+
+## Phase 6: Split Setup (Public Gateway + Home Server)
+
+Optional deployment: a very small VPS holds the public IPv4 address and forwards all traffic through a WireGuard tunnel to the real server behind a residential router. A directly reachable server keeps working as before, without any of this.
+
+```
+Internet ──> VPS (public IPv4) ──WireGuard──> home server (all mail, keys, data)
+```
+
+- **The home server opens the tunnel**, so it needs no port forwarding on the router, and a changing home address or carrier-grade NAT does not matter.
+- **The VPS holds no mail and no keys;** TLS ends at home. It is still treated as important: it can read SMTP that senders deliver without TLS, and whoever controls it could obtain a certificate for our names through HTTP-01.
+- **Client addresses must survive.** SPF, DNS blocklists, rate limits and fail2ban depend on the real address. If connections appeared to come from the VPS, fail2ban would ban the gateway and cut off everyone.
+- **All outbound traffic leaves through the tunnel** (default route on the home server, with a specific route to the VPS via the router), so that replies return the way they came and mail is sent from the VPS address. Residential addresses are widely blocklisted, and port 25 is often blocked.
+- **MSS clamping** on the tunnel; without it, large mails stall in ways that are hard to diagnose.
+- The mail roles need no changes for the recommended variant: `mynetworks` is loopback only, and the firewall matches ports, not interfaces.
+- New roles: a gateway role for the VPS (it cannot use the `nftables` role, whose forward chain drops everything) and a tunnel role for the home server, in an inventory group of their own. The gateway play does not run `preflight`, since the VPS may not run Debian 13.
+
+### 6.1 Gateway capabilities (first step)
+
+The gateway should be as small as possible: it only needs WireGuard, forwarding and NAT, ideally on the cheapest machine available. Its minimum RAM is to be measured, not assumed; the role installs nothing else and runs no other services, and Ansible's Python only runs during a deployment.
+
+The VPS available for testing ("vrede") is one example, not the requirement: **OpenVZ, with `wireguard-go`** (known to work there) instead of the kernel module. OpenVZ shares the host's kernel, so the deciding features depend on the provider and must be checked on the real machine before anything is built.
+
+Known so far about this example: Debian 13, kernel reported as 4.19.0, `/dev/net/tun` present, no port filtering according to its owner, 1 GiB of RAM (`physpages` limit 262144 pages), at most 2000 iptables rules. The loaded modules include `iptable_nat`, `iptable_mangle`, `nf_nat_ipv4` and `nft_compat`, and also `nf_tables`, but not `nft_nat` or `nft_masq`. So the gateway should use iptables (`iptables-legacy` if needed), not native nftables NAT. 46 rules already exist there, so the role must only touch chains of its own and never flush. Still to check:
+
+- Is IP forwarding possible (`net.ipv4.ip_forward`)?
+- Does DNAT work, with nftables or with legacy iptables? (`MASQUERADE` is known to be unreliable on OpenVZ `venet` interfaces; use `SNAT --to-source`.)
+- Is MSS clamping available (`TCPMSS`)?
+- Debian version, kernel, memory limits (`/proc/user_beancounters`), Python for Ansible.
+- Actual memory use of the tunnel under load, and of the whole system, to state a real minimum.
+- Is outbound port 25 open, can the PTR record be set, and is the address on a blocklist?
+
+### 6.2 Forwarding variant (depends on 6.1)
+
+- **Preferred: DNAT** without SNAT on inbound. Client addresses are preserved by routing alone.
+- **Fallback if DNAT is not available: a userspace proxy on the VPS with the PROXY protocol** to carry client addresses (Postfix `smtpd_upstream_proxy_protocol`, Dovecot `haproxy_trusted_networks`, nginx `proxy_protocol`). This changes the mail roles. The PROXY listeners must accept connections from the tunnel only, because otherwise anyone could forge a client address. Outbound SMTP also needs a separate solution. To be designed only if needed.
+
+**Tests:** an extra Molecule instance plays the VPS, using `wireguard-go` as on the real one. The tests behind it run from a host outside the tunnel:
+
+- A connection through the gateway reaches the server with the client's real address in the logs of Postfix and Dovecot.
+- A client that fails repeatedly is banned, and other clients are not affected.
+- Mail sent by the server arrives from the gateway's address.
+- A mail larger than the tunnel MTU gets through in both directions.
+- The certificate is issued through the tunnel.
+- No port other than the forwarded ones is reachable on the gateway.
+- The tunnel comes back after a restart of either side.
+
+**Done when:** the steps above are green, and the setup has run on the real VPS.
 
 ---
 
@@ -253,6 +305,9 @@ Rewrite the README and Wiki to reflect the modernized, bare-metal deployment str
 | Postfix master.cf | Debian's own, submission added via `postconf` |
 | Implementation order | certificate part of 2.5 before 2.3 |
 | Password self-service | users change their main password in Roundcube; Ansible sets only the initial hash; App-Specific Passwords stay admin-managed |
+| Multiple domains | one server, one mail host, one certificate; per domain: mailboxes, aliases, DKIM key, `mta-sts`, `autoconfig` and `autodiscover` sites |
+| Split setup | optional; WireGuard from home to a small VPS, DNAT preserving client addresses, PROXY protocol only as a fallback (Phase 6) |
+| Backup deletion | a compromised server can delete backups by default; `restic_prune_enabled: false` with an append-only target prevents it |
 | Backups required | the restic role fails without repository and password |
 | Password reset | a changed hash in the inventory applies once, via the stored `inventory_password`; open sessions are kicked |
 | Webmail exposure | Roundcube is not trusted: mandatory HTTP basic auth in front of it; users in general are trusted, so Roundcube keeps direct write access to the mail database |

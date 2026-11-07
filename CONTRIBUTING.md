@@ -10,7 +10,7 @@ The current state of the rebuild, decisions that go beyond the modernization pla
 
 ## Development environment
 
-Tests run with [Molecule](https://ansible.readthedocs.io/projects/molecule/) in [incus](https://linuxcontainers.org/incus/) system containers. Each scenario starts three containers on its own bridge: `mail` (the system under test), `dns` (authoritative mock DNS for `sovereign.test`) and `pebble` (a local ACME server).
+Tests run with [Molecule](https://ansible.readthedocs.io/projects/molecule/) in [incus](https://linuxcontainers.org/incus/) system containers. Each scenario starts four containers on its own bridge: `mail` (the system under test), `dns` (authoritative mock DNS for `sovereign.test`), `pebble` (a local ACME server) and `recovery` (empty until the disaster recovery test restores the backup onto it).
 
 ```sh
 pip install -r test-requirements.txt
@@ -33,7 +33,7 @@ Test accounts and their passwords are defined in `.config/molecule/config.yml`. 
 ## Coding conventions
 
 - Use fully qualified collection names (`ansible.builtin.apt`, not `apt`).
-- New code must pass `ansible-lint` (production profile) and `yamllint --strict`. Legacy paths are excluded in `.ansible-lint` and `.yamllint` until they are removed or rewritten.
+- New code must pass `ansible-lint` (production profile) and `yamllint --strict`.
 - Use the `sovereign_debian_track` fact (`trixie` or `testing`, set by the `preflight` role) for release-specific logic instead of hard-coding codenames.
 - Every handler that restarts a service validates the configuration first, for example `postfix check`, `doveconf -n -c /etc/dovecot/dovecot.conf`, `nginx -t`, `nft -c -f /etc/nftables.conf`, `unbound-checkconf` or `rspamadm configtest`. Prefer the `validate` parameter of `template`/`copy` where the tool supports checking a single file.
 - Handlers run in the order they are defined; give the check and the restart the same `listen` topic and define the check first.
