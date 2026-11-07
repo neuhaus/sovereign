@@ -17,6 +17,11 @@ restic_password: ""
 #     AWS_SECRET_ACCESS_KEY: "{{ vault_backup_key }}"
 restic_environment: {}
 
+# Pruning needs the right to delete from the repository. Set this to false when
+# the repository is append-only, so that a compromised server cannot delete its
+# backups, and prune from a trusted machine instead (see docs/BACKUP.md).
+restic_prune_enabled: true
+
 # Retention, applied by the prune job.
 restic_keep_daily: 7
 restic_keep_weekly: 4
@@ -53,15 +58,18 @@ restic_excludes:
 # the time of its last success there, for alerting on backups that stop.
 restic_metrics_dir: "{{ node_exporter_textfile_dir | default('/var/lib/prometheus/node-exporter') }}"
 
-# Picked up by the systemd_timers role.
-restic_timer_jobs:
-  - name: backup
-    description: Encrypted backup with restic
-    command: /usr/local/sbin/sovereign-backup run
-    on_calendar: "{{ restic_backup_on_calendar }}"
-    randomized_delay: 30m
-  - name: backup-prune
-    description: Apply the backup retention policy
-    command: /usr/local/sbin/sovereign-backup prune
-    on_calendar: "{{ restic_prune_on_calendar }}"
-    randomized_delay: 30m
+restic_backup_job:
+  name: backup
+  description: Encrypted backup with restic
+  command: /usr/local/sbin/sovereign-backup run
+  on_calendar: "{{ restic_backup_on_calendar }}"
+  randomized_delay: 30m
+restic_prune_job:
+  name: backup-prune
+  description: Apply the backup retention policy
+  command: /usr/local/sbin/sovereign-backup prune
+  on_calendar: "{{ restic_prune_on_calendar }}"
+  randomized_delay: 30m
+
+# Picked up by the systemd_timers role, which removes timers no longer listed.
+restic_timer_jobs: "{{ [restic_backup_job] + ([restic_prune_job] if restic_prune_enabled else []) }}"

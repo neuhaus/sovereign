@@ -1,0 +1,9 @@
+---
+# Run by test_restic_append_only.py with changed settings.
+- name: Apply the backup and timer roles
+  hosts: mailservers
+  become: true
+  gather_facts: true
+  roles:
+    - role: restic
+    - role: systemd_timers
