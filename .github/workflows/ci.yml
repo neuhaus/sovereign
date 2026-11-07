@@ -8,6 +8,11 @@ on:
       - trixie-wip
   pull_request:
   workflow_dispatch:
+  # Weekly against Debian Testing, to catch upstream breakage early. GitHub runs
+  # this on the default branch only, and disables it in public repositories
+  # after 60 days without activity.
+  schedule:
+    - cron: "17 4 * * 1"
 
 permissions:
   contents: read
@@ -50,9 +55,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        scenario:
-          - trixie
-          - testing
+        scenario: ${{ github.event_name == 'schedule' && fromJSON('["testing"]') || fromJSON('["trixie", "testing"]') }}
     steps:
       - uses: actions/checkout@v7
 

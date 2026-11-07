@@ -16,9 +16,82 @@
           - knot
           # The mail tests run their clients here; dkimpy verifies DKIM signatures.
           - python3-dkim
+          # Append-only backup target for the restic tests.
+          - restic-rest-server
         state: present
         update_cache: true
         cache_valid_time: 3600
+
+    # The package's own service listens on the same port without --append-only.
+    - name: Disable the packaged backup server
+      ansible.builtin.systemd_service:
+        name: restic-rest-server
+        state: stopped
+        enabled: false
+
+    - name: Install the append-only backup server unit
+      ansible.builtin.copy:
+        dest: /etc/systemd/system/sovtest-rest-server.service
+        owner: root
+        group: root
+        mode: "0644"
+        content: |
+          [Unit]
+          Description=Append-only restic server for the tests
+          [Service]
+          StateDirectory=sovtest-rest
+          ExecStart=/usr/bin/restic-rest-server --path /var/lib/sovtest-rest --listen {{ sovtest_ips.dns }}:8000 --append-only --no-auth
+          [Install]
+          WantedBy=multi-user.target
+
+    - name: Start the append-only backup server
+      ansible.builtin.systemd_service:
+        name: sovtest-rest-server
+        state: started
+        enabled: true
+        daemon_reload: true
+
+    # The SMTP sink's certificate for the DANE tests: self-signed, so that only a
+    # matching TLSA record can make Postfix trust it.
+    - name: Create the sink's directory
+      ansible.builtin.file:
+        path: /etc/sovtest
+        state: directory
+        owner: root
+        group: root
+        mode: "0755"
+
+    - name: Create the sink's certificate
+      ansible.builtin.command:
+        argv:
+          - openssl
+          - req
+          - -x509
+          - -newkey
+          - ec
+          - -pkeyopt
+          - ec_paramgen_curve:prime256v1
+          - -nodes
+          - -days
+          - "3650"
+          - -subj
+          - /CN=sink.sovtest
+          - -keyout
+          - /etc/sovtest/sink.key
+          - -out
+          - /etc/sovtest/sink.crt
+        creates: /etc/sovtest/sink.crt
+
+    - name: Compute the sink's TLSA data (3 1 1)
+      ansible.builtin.shell:
+        cmd: >-
+          set -o pipefail;
+          openssl x509 -in /etc/sovtest/sink.crt -noout -pubkey
+          | openssl pkey -pubin -outform DER
+          | sha256sum | cut -d" " -f1
+        executable: /bin/bash
+      register: sovtest_sink_tlsa
+      changed_when: false
 
     - name: Configure knot
       ansible.builtin.template:
@@ -48,6 +121,15 @@
         mode: "0644"
       notify: Restart knot
 
+    - name: Deploy the second mail domain's zone
+      ansible.builtin.template:
+        src: templates/zone-second.j2
+        dest: "/var/lib/knot/{{ sovtest_second_domain }}.zone"
+        owner: knot
+        group: knot
+        mode: "0644"
+      notify: Restart knot
+
     - name: Deploy zones for the DNSSEC tests
       ansible.builtin.template:
         src: templates/zone-minimal.j2
@@ -56,6 +138,16 @@
         group: knot
         mode: "0644"
       loop: "{{ sovtest_signed_zones }}"
+      notify: Restart knot
+
+    - name: Deploy zones for the DANE tests
+      ansible.builtin.template:
+        src: templates/zone-dane.j2
+        dest: "/var/lib/knot/{{ item }}.zone"
+        owner: knot
+        group: knot
+        mode: "0644"
+      loop: "{{ sovtest_dane_zones }}"
       notify: Restart knot
 
     - name: Enable knot
@@ -72,7 +164,7 @@
     - name: Read DS records of the signed zones
       ansible.builtin.command:
         argv: [runuser, -u, knot, --, keymgr, -c, /etc/knot/knot.conf, "{{ item }}", ds]
-      loop: "{{ sovtest_signed_zones }}"
+      loop: "{{ sovtest_signed_zones + sovtest_dane_zones }}"
       register: sovtest_ds
       until: sovtest_ds.rc == 0 and ' DS ' in sovtest_ds.stdout
       retries: 15
@@ -222,7 +314,7 @@
       register: pebble_api_ca
 
 - name: Prepare system under test
-  hosts: mail
+  hosts: mail:recovery
   gather_facts: true
   handlers:
     - name: Update CA certificates

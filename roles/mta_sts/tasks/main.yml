@@ -1,4 +1,15 @@
 ---
+# A missing name would only show later: sending servers that apply MTA-STS would
+# fail on the certificate of this site.
+- name: Assert that the certificate covers the MTA-STS names
+  ansible.builtin.assert:
+    that:
+      - mta_sts_missing_names | length == 0
+    fail_msg: "Add to certbot_domains: {{ mta_sts_missing_names | join(', ') }}"
+    quiet: true
+  vars:
+    mta_sts_missing_names: "{{ mta_sts_domains | map('regex_replace', '^', 'mta-sts.') | list | difference(certbot_domains) }}"
+
 # --- Inbound: publish the policy ---------------------------------------------
 - name: Create the MTA-STS webroot
   ansible.builtin.file:

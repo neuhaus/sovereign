@@ -1,0 +1,73 @@
+---
+# Run by test_disaster_recovery.py: bring the backup to an empty instance and
+# restore it. The order is the one for a real recovery: restore first, so that
+# site.yml finds the keys and the certificate and does not generate new ones.
+- name: Take the backup repository from the old server
+  hosts: mail
+  tasks:
+    - name: Pack the repository
+      ansible.builtin.command:
+        argv: [tar, -C, /var/backups, -czf, /tmp/restic-repository.tar.gz, restic-test]
+      changed_when: true
+
+    - name: Fetch the repository
+      ansible.builtin.fetch:
+        src: /tmp/restic-repository.tar.gz
+        dest: "{{ sovtest_recovery_dir }}/restic-repository.tar.gz"
+        flat: true
+
+- name: Restore the backup on the new server
+  hosts: recovery
+  tasks:
+    - name: Install restic
+      ansible.builtin.apt:
+        name: restic
+        state: present
+        update_cache: true
+        cache_valid_time: 3600
+
+    - name: Create the backup directory
+      ansible.builtin.file:
+        path: /var/backups
+        state: directory
+        owner: root
+        group: root
+        mode: "0755"
+
+    # On a real server the repository stays where it is, e.g. in object storage.
+    - name: Copy the repository
+      ansible.builtin.unarchive:
+        src: "{{ sovtest_recovery_dir }}/restic-repository.tar.gz"
+        dest: /var/backups
+
+    # Security labels belong to the old server. Without this, restic exits with an
+    # error on a host with SELinux, although all data was restored.
+    - name: Restore the latest snapshot
+      ansible.builtin.command:
+        argv: [restic, restore, latest, --target, /, --exclude-xattr, "security.*"]
+      environment:
+        RESTIC_REPOSITORY: /var/backups/restic-test
+        RESTIC_PASSWORD: "{{ restic_password }}"
+        RESTIC_CACHE_DIR: /var/cache/restic
+      changed_when: true
+
+    - name: Create the mail database directory
+      ansible.builtin.file:
+        path: "{{ item.path }}"
+        state: directory
+        owner: root
+        group: root
+        mode: "{{ item.mode }}"
+      loop:
+        - {path: /var/lib/sovereign, mode: "0755"}
+        - {path: /var/lib/sovereign/maildb, mode: "0755"}
+
+    # site.yml sets its owner and keeps the passwords in it.
+    - name: Put the mail database in place
+      ansible.builtin.copy:
+        src: /var/backups/sovereign/mail.sqlite
+        dest: /var/lib/sovereign/maildb/mail.sqlite
+        remote_src: true
+        owner: root
+        group: root
+        mode: "0640"

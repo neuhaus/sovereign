@@ -1,0 +1,10 @@
+; {{ ansible_managed }}
+; Signed mail domain for the DANE tests: its MX is the SMTP sink on the dns
+; instance. dane-ok.test publishes the sink's real key, dane-bad.test a wrong one.
+$ORIGIN {{ item }}.
+$TTL 300
+@       IN SOA  ns.{{ sovtest_domain }}. hostmaster.{{ sovtest_domain }}. 1 3600 600 86400 300
+@       IN NS   ns.{{ sovtest_domain }}.
+@       IN MX   10 mx
+mx      IN A    {{ sovtest_ips.dns }}
+_25._tcp.mx IN TLSA 3 1 1 {{ sovtest_sink_tlsa.stdout if item == 'dane-ok.test' else sovtest_sink_tlsa.stdout[:-1] ~ ('1' if sovtest_sink_tlsa.stdout[-1] == '0' else '0') }}

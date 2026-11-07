@@ -1,0 +1,9 @@
+---
+# Run by test_multidomain.py: a role must refuse an incomplete configuration.
+- name: Run one role
+  hosts: mailservers
+  gather_facts: false
+  tasks:
+    - name: Include the role
+      ansible.builtin.include_role:
+        name: "{{ sovtest_role }}"

@@ -5,15 +5,12 @@ again afterwards.
 """
 
 import json
-import os
 import pathlib
-import subprocess
-import tempfile
 import time
 
 import pytest
 
-from conftest import mail_client
+from conftest import mail_client, run_playbook
 
 testinfra_hosts = ["mail"]
 
@@ -34,29 +31,19 @@ def client(peer):
 
 @pytest.fixture(scope="module")
 def apply_roles(host):
-    """Run the roles with dave's hash added (None: without dave); returns the changed count."""
+    """Run the roles with dave added (no hash: without him); returns the changed count."""
 
-    def run(dave_hash=None):
-        extra = {"maildb_mailboxes": "{{ mail_mailboxes }}"}
+    def run(dave_hash=None, app_passwords=None, extra_aliases=None):
+        variables = {
+            "maildb_mailboxes": "{{ mail_mailboxes }}",
+            "sovtest_extra_aliases": extra_aliases or [],
+            "maildb_aliases": "{{ mail_aliases + sovtest_extra_aliases }}",
+        }
         if dave_hash:
-            extra = {
-                "sovtest_dave": [{"address": "dave@{{ sovtest_domain }}", "password": dave_hash}],
-                "maildb_mailboxes": "{{ mail_mailboxes + sovtest_dave }}",
-            }
-        with tempfile.NamedTemporaryFile("w", suffix=".json") as variables:
-            json.dump(extra, variables)
-            variables.flush()
-            result = subprocess.run(
-                ["ansible-playbook", "-i", host.backend.ansible_inventory, "-e", "@" + variables.name, str(TESTS / "maildb_run.yml")],
-                env={**os.environ, "ANSIBLE_ROLES_PATH": str(TESTS.parents[2] / "roles")},
-                capture_output=True,
-                text=True,
-                check=False,
-            )
-        assert result.returncode == 0, result.stdout[-3000:] + result.stderr[-2000:]
-        recap = [line for line in result.stdout.splitlines() if line.startswith("mail ")]
-        assert recap, result.stdout[-2000:]
-        return int(recap[-1].split("changed=")[1].split()[0])
+            dave = {"address": "dave@{{ sovtest_domain }}", "password": dave_hash, "app_passwords": app_passwords or []}
+            variables["sovtest_dave"] = [dave]
+            variables["maildb_mailboxes"] = "{{ mail_mailboxes + sovtest_dave }}"
+        return run_playbook(host, TESTS / "maildb_run.yml", variables)
 
     return run
 
@@ -141,4 +128,66 @@ def test_migration_from_schema_1_keeps_passwords(host, ctx, apply_roles):
     assert host.run("doveadm user %s", ctx["dave"].replace("dave@", "alice@")).rc == 0
     assert host.check_output("sqlite3 %s %s", DB, live) == before
     assert host.check_output("sqlite3 %s %s", DB, "SELECT count(*) FROM mailboxes WHERE inventory_password = ''") == "0"
+    assert apply_roles() == 0
+
+
+def alias_targets(host, source):
+    result = host.run("postmap -q %s proxy:sqlite:/etc/postfix/sqlite/virtual-aliases.cf", source)
+    return result.stdout.strip()
+
+
+def test_app_passwords_follow_the_inventory(host, client, ctx, apply_roles):
+    main = "sovtest-dave-main"
+    main_hash = new_hash(host, main)
+    first, second = "DavePhn1-sovtest-first", "DavePhn1-sovtest-second"
+    try:
+        # Added.
+        apply_roles(main_hash, [{"name": "phone", "id": "DavePhn1", "password": new_hash(host, first)}])
+        assert imap_ok(client, ctx, first)
+
+        # Changed: only the new one works, the main password is untouched.
+        apply_roles(main_hash, [{"name": "phone", "id": "DavePhn1", "password": new_hash(host, second)}])
+        assert imap_ok(client, ctx, second)
+        assert not imap_ok(client, ctx, first)
+        assert imap_ok(client, ctx, main)
+
+        # Removed.
+        apply_roles(main_hash)
+        assert not imap_ok(client, ctx, second)
+        assert imap_ok(client, ctx, main)
+    finally:
+        apply_roles()
+
+
+def test_aliases_follow_the_inventory(host, sovtest_vars, apply_roles):
+    domain = sovtest_vars["sovtest_domain"]
+    source = "sales@" + domain
+    try:
+        # Added.
+        apply_roles(extra_aliases=[{"source": source, "destinations": ["alice@" + domain]}])
+        assert alias_targets(host, source) == "alice@" + domain
+
+        # Changed.
+        apply_roles(extra_aliases=[{"source": source, "destinations": ["bob@" + domain]}])
+        assert alias_targets(host, source) == "bob@" + domain
+    finally:
+        # Removed.
+        apply_roles()
+    assert alias_targets(host, source) == ""
+
+
+def test_manual_changes_are_reverted(host, sovtest_vars, apply_roles):
+    domain = sovtest_vars["sovtest_domain"]
+    manual = (
+        "INSERT INTO aliases (source, destination) VALUES ('manual@%s', 'alice@%s');"
+        "DELETE FROM aliases WHERE source = 'postmaster@%s';"
+        "UPDATE mailboxes SET enabled = 0 WHERE localpart = 'bob';"
+        "DELETE FROM app_passwords WHERE id = 'AlicPhn1';"
+    ) % (domain, domain, domain)
+    host.check_output("sqlite3 -bail %s %s", DB, manual)
+    assert apply_roles() > 0
+    assert alias_targets(host, "manual@" + domain) == ""
+    assert alias_targets(host, "postmaster@" + domain) == "alice@" + domain
+    assert host.check_output("sqlite3 %s %s", DB, "SELECT enabled FROM mailboxes WHERE localpart = 'bob'") == "1"
+    assert host.check_output("sqlite3 %s %s", DB, "SELECT count(*) FROM app_passwords WHERE id = 'AlicPhn1'") == "1"
     assert apply_roles() == 0

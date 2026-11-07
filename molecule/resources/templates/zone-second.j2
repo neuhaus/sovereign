@@ -1,0 +1,16 @@
+; {{ ansible_managed }}
+; A second mail domain on the same server: everything points at the mail host
+; of the first domain.
+$ORIGIN {{ sovtest_second_domain }}.
+$TTL 300
+@               IN SOA  ns.{{ sovtest_domain }}. hostmaster.{{ sovtest_domain }}. 1 3600 600 86400 300
+@               IN NS   ns.{{ sovtest_domain }}.
+@               IN MX   10 mail.{{ sovtest_domain }}.
+; A records, not CNAMEs as on a real domain: Pebble asks this server directly, and
+; it does not follow a CNAME into another zone. Real ACME servers resolve them.
+mta-sts         IN A    {{ sovtest_ips.mail }}
+autoconfig      IN A    {{ sovtest_ips.mail }}
+autodiscover    IN A    {{ sovtest_ips.mail }}
+@               IN TXT  "v=spf1 mx -all"
+_dmarc          IN TXT  "v=DMARC1; p=reject"
+_mta-sts        IN TXT  "v=STSv1; id=2026110701"

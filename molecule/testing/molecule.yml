@@ -14,3 +14,4 @@ provisioner:
           mail: 10.234.14.10
           dns: 10.234.14.11
           pebble: 10.234.14.12
+          recovery: 10.234.14.13

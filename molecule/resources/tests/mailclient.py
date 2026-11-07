@@ -413,54 +413,79 @@ def cmd_dav_parallel(ip, vhost, path, user, password, count):
         out(statuses=list(pool.map(propfind, range(int(count)))))
 
 
-def cmd_sink(port, outfile):
-    """Minimal SMTP server recording envelopes as JSON lines (plays a foreign MX)."""
+def sink_session(conn, outfile, tls):
+    """One SMTP session; returns when the client is done."""
+    f = conn.makefile("rwb")
+    env = {"rcpt": [], "tls": False}
+
+    def say(line):
+        f.write(line.encode() + b"\r\n")
+        f.flush()
+
+    say("220 sink.sovtest ESMTP")
+    while True:
+        line = f.readline().decode(errors="replace").strip()
+        if not line:
+            break
+        upper = line.upper()
+        if upper.startswith(("EHLO", "HELO")):
+            if tls and not env["tls"]:
+                say("250-sink.sovtest")
+                say("250 STARTTLS")
+            else:
+                say("250 sink.sovtest")
+        elif upper == "STARTTLS" and tls:
+            say("220 go ahead")
+            conn = tls.wrap_socket(conn, server_side=True)
+            f = conn.makefile("rwb")
+            env["tls"] = True
+        elif upper.startswith("MAIL FROM:"):
+            env["from"] = line[10:].strip().split()[0].strip("<>")
+            say("250 ok")
+        elif upper.startswith("RCPT TO:"):
+            env["rcpt"].append(line[8:].strip().split()[0].strip("<>"))
+            say("250 ok")
+        elif upper == "DATA":
+            say("354 go ahead")
+            lines = []
+            while True:
+                data_line = f.readline()
+                if data_line.rstrip(b"\r\n") == b".":
+                    break
+                lines.append(data_line[1:] if data_line.startswith(b"..") else data_line)
+            env["data"] = base64.b64encode(b"".join(lines)).decode()
+            with open(outfile, "a", encoding="utf-8") as fh:
+                fh.write(json.dumps(env) + "\n")
+            env = {"rcpt": [], "tls": env["tls"]}
+            say("250 queued")
+        elif upper == "QUIT":
+            say("221 bye")
+            break
+        else:
+            say("250 ok")
+
+
+def cmd_sink(port, outfile, certfile=None, keyfile=None):
+    """Minimal SMTP server recording envelopes as JSON lines (plays a foreign MX).
+
+    With a certificate it offers STARTTLS, without any verification of its own.
+    """
+    tls = None
+    if certfile:
+        tls = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+        tls.load_cert_chain(certfile, keyfile)
     srv = socket.socket()
     srv.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     srv.bind(("0.0.0.0", int(port)))
     srv.listen()
     while True:
         conn, _ = srv.accept()
-        f = conn.makefile("rwb")
-        env = {"rcpt": []}
-
-        def say(line):
-            f.write(line.encode() + b"\r\n")
-            f.flush()
-
-        say("220 sink.sovtest ESMTP")
-        while True:
-            line = f.readline().decode(errors="replace").strip()
-            if not line:
-                break
-            upper = line.upper()
-            if upper.startswith(("EHLO", "HELO")):
-                say("250 sink.sovtest")
-            elif upper.startswith("MAIL FROM:"):
-                env["from"] = line[10:].strip().split()[0].strip("<>")
-                say("250 ok")
-            elif upper.startswith("RCPT TO:"):
-                env["rcpt"].append(line[8:].strip().split()[0].strip("<>"))
-                say("250 ok")
-            elif upper == "DATA":
-                say("354 go ahead")
-                lines = []
-                while True:
-                    data_line = f.readline()
-                    if data_line.rstrip(b"\r\n") == b".":
-                        break
-                    lines.append(data_line[1:] if data_line.startswith(b"..") else data_line)
-                env["data"] = base64.b64encode(b"".join(lines)).decode()
-                with open(outfile, "a", encoding="utf-8") as fh:
-                    fh.write(json.dumps(env) + "\n")
-                env = {"rcpt": []}
-                say("250 queued")
-            elif upper == "QUIT":
-                say("221 bye")
-                break
-            else:
-                say("250 ok")
-        conn.close()
+        try:
+            sink_session(conn, outfile, tls)
+        except OSError:  # includes ssl.SSLError: clients may abort after the handshake
+            pass
+        finally:
+            conn.close()
 
 
 COMMANDS = {

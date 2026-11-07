@@ -1,4 +1,17 @@
 ---
+# Mail clients would show certificate errors for a missing name.
+- name: Assert that the certificate covers the autoconfiguration names
+  ansible.builtin.assert:
+    that:
+      - autoconfig_missing_names | length == 0
+    fail_msg: "Add to certbot_domains: {{ autoconfig_missing_names | join(', ') }}"
+    quiet: true
+  vars:
+    autoconfig_missing_names: >-
+      {{ (autoconfig_domains | map('regex_replace', '^', 'autoconfig.') | list
+          + autoconfig_domains | map('regex_replace', '^', 'autodiscover.') | list)
+         | difference(certbot_domains) }}
+
 - name: Create the autoconfig directories
   ansible.builtin.file:
     path: "{{ autoconfig_webroot }}/{{ item }}"

@@ -27,15 +27,19 @@ def test_database_permissions(host):
 
 def test_database_mirrors_inventory(host, sovtest_vars):
     domain = sovtest_vars["sovtest_domain"]
-    assert query(host, "SELECT name FROM domains") == [domain]
+    second = sovtest_vars["sovtest_second_domain"]
+    assert query(host, "SELECT name FROM domains ORDER BY 1") == sorted([domain, second])
     assert query(host, "SELECT localpart || '@' || domain FROM mailboxes ORDER BY 1") == [
+        "alice@" + second,
         "alice@" + domain,
         "bob@" + domain,
         "carol@" + domain,
     ]
     assert query(host, "SELECT id || ':' || name FROM app_passwords ORDER BY 1") == ["AlicPhn1:phone", "CarolPh1:phone"]
     assert query(host, "SELECT source || '>' || destination FROM aliases ORDER BY 1") == [
+        "fwd2@%s>someone2@%s" % (second, sovtest_vars["sovtest_external_domain"]),
         "fwd@%s>someone@%s" % (domain, sovtest_vars["sovtest_external_domain"]),
+        "info@%s>alice@%s" % (second, domain),
         "postmaster@%s>alice@%s" % (domain, domain),
         "team@%s>alice@%s" % (domain, domain),
         "team@%s>bob@%s" % (domain, domain),

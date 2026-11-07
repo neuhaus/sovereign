@@ -1,0 +1,23 @@
+---
+# Run by test_disaster_recovery.py after site.yml. The users exist only now, and
+# restic restored the numeric owners of the old server.
+- name: Finish the recovery on the new server
+  hosts: recovery
+  tasks:
+    - name: Give the restored data to the local users
+      ansible.builtin.command:
+        argv: [chown, -R, "{{ item.owner }}", "{{ item.path }}"]
+      loop:
+        - {owner: "vmail:vmail", path: /var/vmail}
+        - {owner: "radicale:radicale", path: /var/lib/radicale/collections}
+      changed_when: true
+
+    # Debian's package created an empty database during site.yml.
+    - name: Put the Roundcube database in place
+      ansible.builtin.copy:
+        src: /var/backups/sovereign/roundcube.sqlite
+        dest: /var/lib/dbconfig-common/sqlite3/roundcube/roundcube
+        remote_src: true
+        owner: www-data
+        group: www-data
+        mode: "0660"
