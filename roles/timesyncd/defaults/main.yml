@@ -1,0 +1,4 @@
+---
+# NTP servers to use. Set the global variable `ntp_servers` in the inventory. With
+# an empty list systemd-timesyncd uses Debian's default pool.
+timesyncd_ntp_servers: "{{ ntp_servers | default([]) }}"

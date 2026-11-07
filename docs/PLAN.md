@@ -72,6 +72,8 @@ Implementation order: 2.1, 2.2, the certificate part of 2.5, 2.3, 2.4, rest of 2
 
 ### 2.1 Security & Base System
 
+- **Time:** systemd-timesyncd, servers from `ntp_servers`, otherwise Debian's default pool.
+- **SSH:** key logins only (`openssh` role). The role stops if the connecting user has no key, so that it cannot lock anyone out.
 - **Firewall:** nftables role. `/etc/nftables.conf` allows TCP 22, 25, 80, 143, 443, 587, 993 and 4190, dropping everything else. Only Sovereign's own table is replaced on reload, so fail2ban's table and bans survive.
 - **Task scheduling:** systemd-timers role replacing all cron functionality (timers no longer defined are removed).
 - **Intrusion prevention:** Fail2ban with the systemd backend (journald), nftables ban actions; jails for sshd, Postfix (aggressive mode) and Dovecot. The sshd filter also counts OpenSSH's own penalty drops (OpenSSH >= 10.1).
@@ -228,7 +230,7 @@ Rewrite the README and Wiki to reflect the modernized, bare-metal deployment str
   - **Calendars and contacts:** export as `.ics` / `.vcf` from the old ownCloud/Nextcloud and import into Radicale.
   - **Cutover:** lower DNS TTLs in advance, run a final delta sync, then switch MX, autodiscover and related records and update the DKIM and TLSA records.
 - **Developer guide:** running the Molecule scenarios locally with incus, and how the GitHub Actions workflow is structured.
-- **Role design documents:** decide whether each new role gets a design description (as CONTRIBUTING.md asks) or the rule is dropped in favour of the in-file comments and commit messages.
+- **Role design documents:** one chapter per role in `docs/ROLES.md`.
 
 ---
 
@@ -282,6 +284,31 @@ Known so far about this example: Debian 13, kernel reported as 4.19.0, `/dev/net
 
 ---
 
+## Later (not scheduled)
+
+### Shared mail folders
+
+Folders that several users can read and write. Today only calendars and address books can be shared (`radicale_shared_collections`); Dovecot has no ACL plugin or shared namespace configured.
+
+**Proposed, not yet decided:** a public namespace with folders defined in the inventory, like shared calendars. Access follows the inventory and needs no ACL support in mail clients. The alternative is users sharing their own folders through IMAP ACLs, which adds a shared namespace and a dictionary of who shares what, and moves access control away from the inventory.
+
+```yaml
+mail_shared_folders:
+  - name: family
+    members: [alice@example.org, bob@example.org]
+```
+
+To settle when this is built:
+
+- Read/unread flags are shared by default. Keep them per user with Dovecot's per-user index setting, and check what that means for a restore.
+- Mail reaches a folder only by being moved there or through a Sieve rule. Decide whether an address should deliver straight into a folder.
+- Removing a member or a folder revokes access and keeps the data, as with shared calendars.
+- Confirm the Dovecot 2.4 configuration syntax, and how full-text search behaves on these folders.
+
+**Tests:** a member can read, write and delete; a non-member can neither see nor open the folder, also after being removed from the list; flags behave as decided; the folder is in the restic backup and comes back in the disaster recovery test.
+
+---
+
 ## Decisions
 
 | Topic | Decision |
@@ -305,6 +332,8 @@ Known so far about this example: Debian 13, kernel reported as 4.19.0, `/dev/net
 | Postfix master.cf | Debian's own, submission added via `postconf` |
 | Implementation order | certificate part of 2.5 before 2.3 |
 | Password self-service | users change their main password in Roundcube; Ansible sets only the initial hash; App-Specific Passwords stay admin-managed |
+| SSH logins | keys only; the role refuses to run if the connecting user has no key. Root logins with a key stay as Debian sets them |
+| Role design documents | one chapter per role in `docs/ROLES.md` instead of one file per role |
 | Multiple domains | one server, one mail host, one certificate; per domain: mailboxes, aliases, DKIM key, `mta-sts`, `autoconfig` and `autodiscover` sites |
 | Split setup | optional; WireGuard from home to a small VPS, DNAT preserving client addresses, PROXY protocol only as a fallback (Phase 6) |
 | Backup deletion | a compromised server can delete backups by default; `restic_prune_enabled: false` with an append-only target prevents it |

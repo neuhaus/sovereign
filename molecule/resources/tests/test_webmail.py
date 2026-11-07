@@ -259,9 +259,11 @@ def test_wrong_password_does_not_delay_other_users(client, ctx):
     # (Radicale sends no client address) and lock them out.
     for _ in range(3):
         assert dav(client, ctx, "PROPFIND", "/" + ctx["alice"] + "/", ctx["alice"], "wrong-password")["status"] == 401
-    started = time.monotonic()
-    assert dav(client, ctx, "PROPFIND", "/" + ctx["bob"] + "/", ctx["bob"], BOB)["status"] == 207
-    assert time.monotonic() - started < 3
+    # Measured by the client, best of three: a penalty would delay all of them, a
+    # busy test machine only some.
+    results = [dav(client, ctx, "PROPFIND", "/" + ctx["bob"] + "/", ctx["bob"], BOB) for _ in range(3)]
+    assert [r["status"] for r in results] == [207] * 3
+    assert min(r["elapsed"] for r in results) < 2, results
 
 
 def test_parallel_logins(client, ctx):

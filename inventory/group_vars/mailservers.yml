@@ -61,6 +61,11 @@ restic_password: "{{ vault_restic_password }}"
 #   AWS_ACCESS_KEY_ID: "{{ vault_backup_key_id }}"
 #   AWS_SECRET_ACCESS_KEY: "{{ vault_backup_key }}"
 
+# --- Time -----------------------------------------------------------------------
+# Correct time matters for certificates and DKIM. Empty: Debian's default pool.
+# ntp_servers:
+#   - ntp.example.net
+
 # --- Monitoring -----------------------------------------------------------------
 # Addresses allowed to scrape ports 9100 and 9900. Empty: both stay closed.
 monitoring_sources: []

@@ -159,6 +159,9 @@ provisioner:
         # dns acts as the monitoring host; pebble must not reach the exporters.
         monitoring_sources:
           - "{{ sovtest_ips.dns }}"
+        # Nothing answers there; the tests check that the setting is applied.
+        ntp_servers:
+          - "ntp.{{ sovtest_domain }}"
         systemd_timers_jobs:
           - name: molecule-check
             description: Molecule test job

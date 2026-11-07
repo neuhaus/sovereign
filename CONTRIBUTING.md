@@ -84,9 +84,7 @@ A module must have tests in `molecule/resources/tests/` (pytest-testinfra) that 
 
 ### Design document
 
-A module should have a design description explaining the approach to implementing a service and what tradeoffs were made when choosing the design that was implemented. Do not leave this for comments in a pull request as we want this close to the code for the sake of future maintainers.
-
-The design description should be succinct and to the point. Assume the reader is familiar with Sovereign but not your module. As a rule of thumb, 500-1000 words is about the right length for a module design description.
+A module gets a chapter in [docs/ROLES.md](docs/ROLES.md) explaining its approach and the tradeoffs of its design, so that this stays close to the code for future maintainers rather than in pull request comments. Keep it short and to the point, and assume the reader knows Sovereign but not the module. Add what a reader could not work out from the code: why it is built this way, and what was tried and rejected.
 
 ## Design checklist
 

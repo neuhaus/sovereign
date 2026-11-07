@@ -1,0 +1,4 @@
+---
+# The account you log in with, which must have an SSH key before password logins
+# are turned off. By default, the user Ansible connects as.
+openssh_login_user: "{{ ansible_facts['env']['SUDO_USER'] | default(ansible_facts['user_id']) }}"

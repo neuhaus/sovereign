@@ -14,7 +14,7 @@ What you get
 - **Webmail** with Roundcube, behind HTTP basic auth, where users also change their password and filters.
 - **Calendars and contacts** with Radicale, including shared ones.
 - **Encrypted offsite backups** with Restic, and a tested restore.
-- **Hardening and upkeep:** nftables firewall, fail2ban, a DNSSEC-validating resolver, automatic security updates, Prometheus metrics.
+- **Hardening and upkeep:** SSH with keys only, nftables firewall, fail2ban, a DNSSEC-validating resolver, automatic security updates, Prometheus metrics.
 - **Several mail domains** on one server, each with its own mailboxes and DKIM key.
 - **Administration as code:** domains, mailboxes and aliases on the server follow one YAML file exactly.
 
@@ -32,6 +32,8 @@ Installation
     echo 'deploy ALL=(ALL) NOPASSWD: ALL' > /etc/sudoers.d/deploy
     install -d -o deploy -g deploy -m 700 /home/deploy/.ssh
     # put your public key into /home/deploy/.ssh/authorized_keys, owned by deploy
+
+Make sure this key works: the playbook turns off SSH password logins for the whole server, and it stops if the user it connects as has no key.
 
 **2. Configure.** On your computer:
 
@@ -109,6 +111,7 @@ More documentation
 - [docs/ADMINISTRATION.md](docs/ADMINISTRATION.md): users, passwords, aliases, shared calendars, operations
 - [docs/BACKUP.md](docs/BACKUP.md): backups and disaster recovery
 - [docs/MIGRATION.md](docs/MIGRATION.md): moving from a legacy Sovereign server
+- [docs/ROLES.md](docs/ROLES.md): how each role works and why
 - [CONTRIBUTING.md](CONTRIBUTING.md): development and tests
 
 Questions and feedback on Matrix: [#sovereign:ping.de](https://matrix.to/#/%23sovereign:ping.de).

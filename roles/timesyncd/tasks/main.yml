@@ -1,0 +1,47 @@
+---
+- name: Install systemd-timesyncd
+  ansible.builtin.apt:
+    name: systemd-timesyncd
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+
+- name: Create the configuration directory
+  ansible.builtin.file:
+    path: /etc/systemd/timesyncd.conf.d
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Configure the NTP servers
+  ansible.builtin.template:
+    src: sovereign.conf.j2
+    dest: /etc/systemd/timesyncd.conf.d/sovereign.conf
+    owner: root
+    group: root
+    mode: "0644"
+  when: timesyncd_ntp_servers | length > 0
+  notify: Restart timesyncd
+
+- name: Use Debian's default servers
+  ansible.builtin.file:
+    path: /etc/systemd/timesyncd.conf.d/sovereign.conf
+    state: absent
+  when: timesyncd_ntp_servers | length == 0
+  notify: Restart timesyncd
+
+- name: Check whether this is a container
+  ansible.builtin.command: systemd-detect-virt --container --quiet
+  register: timesyncd_container
+  changed_when: false
+  failed_when: false
+  check_mode: false
+
+# In a container the unit's condition keeps it stopped, since the host keeps the
+# time. Asking for it to be started there would report a change on every run.
+- name: Enable timesyncd
+  ansible.builtin.systemd_service:
+    name: systemd-timesyncd
+    state: "{{ 'started' if timesyncd_container.rc != 0 else omit }}"
+    enabled: true

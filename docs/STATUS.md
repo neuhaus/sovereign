@@ -4,11 +4,10 @@ Working notes for the Debian 13 / Testing rebuild of Sovereign (branch
 `trixie-wip`). Updated with every step; the commit messages have the details.
 The plan itself, with the decisions worked in, is [PLAN.md](PLAN.md).
 
-Last update: Phases 0-4 complete, plus password reset, multiple mail domains and
-append-only backups; Phase 5 mostly done. Green on a local machine with Molecule on
-incus (256 tests each, converge and idempotence): Debian 13 and Testing in
-containers, and also with `mail` as a real 2 GiB VM with Debian's own kernel. Not
-yet confirmed by CI, and not yet run on a real server. Next: Phase 6 (split setup).
+Last update: Phases 0-5 complete, including password reset, multiple mail domains
+and append-only backups, confirmed by CI at `c99e2ce`. Since then the `openssh` role
+(key logins only), the `timesyncd` role (`ntp_servers`) and `docs/ROLES.md`. Not yet
+run on a real server. Next: Phase 6 (split setup).
 
 ## Phases
 
@@ -23,15 +22,15 @@ yet confirmed by CI, and not yet run on a real server. Next: Phase 6 (split setu
 | 2.4 Rspamd | done | milter, DKIM/ARC, rate limit, attachment policy, IMAPSieve learning |
 | 2.5 rest | done | MTA-STS policy, autoconfig/autodiscover, outbound MTA-STS with DANE precedence (`sovereign-tls-policy`) |
 | 2.6 Webmail/groupware | done | Roundcube behind mandatory basic auth, Radicale, password self-service |
-| 2.7 Backups | done, CI pending | Restic: daily backup, weekly prune, restore tested through Dovecot, success metric, optional append-only target |
-| 3 GitOps admin | done, CI pending | `maildb` mirrors the inventory, keeps passwords changed by users, a new hash resets; several mail domains |
-| 4 Extended tests | CI pending | DANE, disaster recovery onto an empty instance, weekly run against Testing |
-| 5 Documentation | mostly done | README, `docs/ADMINISTRATION.md`, `docs/INSTALL.md`, `docs/BACKUP.md`, `docs/MIGRATION.md`; decision on role design documents open |
+| 2.7 Backups | done | Restic: daily backup, weekly prune, restore tested through Dovecot, success metric, optional append-only target |
+| 3 GitOps admin | done | `maildb` mirrors the inventory, keeps passwords changed by users, a new hash resets; several mail domains |
+| 4 Extended tests | done | DANE, disaster recovery onto an empty instance, weekly run against Testing |
+| 5 Documentation | done | README, `docs/ADMINISTRATION.md`, `docs/INSTALL.md`, `docs/BACKUP.md`, `docs/MIGRATION.md`, `docs/ROLES.md` |
 | 6 Split setup | open | VPS gateway + home server over WireGuard; first check what the OpenVZ VPS allows (DNAT) |
 
 ## Roles in `site.yml` (in order)
 
-preflight, unbound, nftables, fail2ban, nginx, certbot, maildb, mta_sts,
+preflight, openssh, timesyncd, unbound, nftables, fail2ban, nginx, certbot, maildb, mta_sts,
 autoconfig, rspamd, postfix, dovecot, radicale, roundcube, restic,
 unattended_upgrades, systemd_timers, node_exporter.
 
@@ -131,10 +130,9 @@ unattended_upgrades, systemd_timers, node_exporter.
 - To document in Phase 5: password reset via a new hash (the user should change
   the temporary password; a reverted hash resets again; app passwords stay valid
   until removed), `roundcube_basic_auth_users` (required), the `dav.<domain>` record.
-- SSH hardening and time synchronisation were part of the removed `common` role
-  and have no replacement yet. Not in the plan; decide.
 - Nothing has run on a real server yet, only in containers. To check there: LUKS
   remote unlock, the migration guide, certificates from Let's Encrypt.
+- Shared mail folders: not scheduled, see "Later" in [PLAN.md](PLAN.md).
 - Make roundcube, radicale and restic optional (`*_enabled`, decided, deferred).
   A `when:` on the role is not enough: its public defaults still reach other
   roles (restic's timers, the Roundcube database in the backup), and disabling
@@ -143,8 +141,6 @@ unattended_upgrades, systemd_timers, node_exporter.
   need the disabled path to work when nothing was ever installed.
 - postsrsd milter mode (see findings).
 - Unbound: systemd-resolved is masked when present; check on real servers.
-- Role design documents: CONTRIBUTING.md asks for one per role; the new roles
-  have none yet (decide in Phase 5).
 
 ## Testing
 

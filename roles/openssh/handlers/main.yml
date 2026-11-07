@@ -1,0 +1,13 @@
+---
+# Handlers run in the order they are defined: check first, then reload.
+- name: Check sshd configuration
+  ansible.builtin.command:
+    argv: [sshd, -t]
+  changed_when: false
+  listen: OpenSSH configuration changed
+
+- name: Reload sshd
+  ansible.builtin.systemd_service:
+    name: ssh
+    state: reloaded
+  listen: OpenSSH configuration changed

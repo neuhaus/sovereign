@@ -18,9 +18,21 @@
           - python3-dkim
           # Append-only backup target for the restic tests.
           - restic-rest-server
+          # Client for the SSH tests.
+          - openssh-client
         state: present
         update_cache: true
         cache_valid_time: 3600
+
+    - name: Create the key for the SSH tests
+      ansible.builtin.command:
+        argv: [ssh-keygen, -q, -t, ed25519, -N, "", -f, /root/.ssh/sovtest_ed25519]
+        creates: /root/.ssh/sovtest_ed25519
+
+    - name: Read the public key for the SSH tests
+      ansible.builtin.slurp:
+        src: /root/.ssh/sovtest_ed25519.pub
+      register: sovtest_ssh_pubkey
 
     # The package's own service listens on the same port without --append-only.
     - name: Disable the packaged backup server
@@ -360,6 +372,23 @@
         state: present
         update_cache: true
         cache_valid_time: 3600
+
+    # Every real server has a key for its admin; the openssh role insists on it.
+    - name: Create the SSH directory
+      ansible.builtin.file:
+        path: /root/.ssh
+        state: directory
+        owner: root
+        group: root
+        mode: "0700"
+
+    - name: Authorize the key for the SSH tests
+      ansible.builtin.copy:
+        content: "{{ hostvars['dns'].sovtest_ssh_pubkey.content | b64decode }}"
+        dest: /root/.ssh/authorized_keys
+        owner: root
+        group: root
+        mode: "0600"
 
     - name: Create the unbound configuration directory
       ansible.builtin.file:

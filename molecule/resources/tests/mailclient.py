@@ -394,10 +394,11 @@ def cmd_dav(ip, vhost, method, path, user="", password="", body=""):
     headers = {"Host": vhost, "Depth": "0", "Content-Type": "text/calendar" if method == "PUT" else "application/xml"}
     if user:
         headers["Authorization"] = basic_auth(user, password)
+    started = time.monotonic()
     conn.request(method, path, body or (PROPFIND if method == "PROPFIND" else None), headers)
     resp = conn.getresponse()
     text = resp.read().decode(errors="replace")
-    out(status=resp.status, location=resp.getheader("Location"), body=text[:2000])
+    out(status=resp.status, location=resp.getheader("Location"), body=text[:2000], elapsed=time.monotonic() - started)
 
 
 def cmd_dav_parallel(ip, vhost, path, user, password, count):

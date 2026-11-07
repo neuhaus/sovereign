@@ -1,0 +1,47 @@
+---
+# Without this check, turning off password logins could lock you out for good.
+- name: Look up the login user
+  ansible.builtin.getent:
+    database: passwd
+    key: "{{ openssh_login_user }}"
+
+- name: Check the login user's SSH keys
+  ansible.builtin.stat:
+    path: "{{ ansible_facts['getent_passwd'][openssh_login_user][4] }}/.ssh/authorized_keys"
+  register: openssh_authorized_keys
+
+- name: Assert that the login user has an SSH key
+  ansible.builtin.assert:
+    that:
+      - openssh_authorized_keys.stat.exists
+      - openssh_authorized_keys.stat.size > 0
+    fail_msg: >-
+      Password logins are about to be turned off, but {{ openssh_login_user }} has no
+      keys in {{ openssh_authorized_keys.stat.path | default('~/.ssh/authorized_keys') }}.
+      Add your public key first, or you would be locked out of this server.
+    quiet: true
+
+- name: Install openssh-server
+  ansible.builtin.apt:
+    name: openssh-server
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+
+# The first value of a setting wins, and sshd_config includes this directory at
+# its top, so this also beats files such as cloud-init's 50-cloud-init.conf.
+- name: Turn off password logins
+  ansible.builtin.template:
+    src: sovereign.conf.j2
+    dest: /etc/ssh/sshd_config.d/00-sovereign.conf
+    owner: root
+    group: root
+    mode: "0644"
+    validate: sshd -t -f %s
+  notify: OpenSSH configuration changed
+
+- name: Enable sshd
+  ansible.builtin.systemd_service:
+    name: ssh
+    state: started
+    enabled: true
