@@ -4,9 +4,10 @@ Working notes for the Debian 13 / Testing rebuild of Sovereign (branch
 `trixie-wip`). Updated with every step; the commit messages have the details.
 The plan itself, with the decisions worked in, is [PLAN.md](PLAN.md).
 
-Last update: Phase 2.6 complete and green with Molecule on incus on a local
-machine, Debian 13 and Testing (194 tests each, converge and idempotence); not
-yet confirmed by CI. Next: 2.7 (Restic).
+Last update: Phase 2.6 confirmed by CI. Password reset and Phase 2.7 complete and
+green with Molecule on incus on a local machine, Debian 13 and Testing (212 tests
+each, converge and idempotence); not yet confirmed by CI. Next: rest of Phase 3
+(tests for changing aliases and app passwords), then Phase 4.
 
 ## Phases
 
@@ -20,18 +21,17 @@ yet confirmed by CI. Next: 2.7 (Restic).
 | 2.3 Mail transport | done | SQLite mail DB, Postfix, Dovecot 2.4, postsrsd |
 | 2.4 Rspamd | done | milter, DKIM/ARC, rate limit, attachment policy, IMAPSieve learning |
 | 2.5 rest | done | MTA-STS policy, autoconfig/autodiscover, outbound MTA-STS with DANE precedence (`sovereign-tls-policy`) |
-| 2.6 Webmail/groupware | done, CI pending | Roundcube behind mandatory basic auth, Radicale, password self-service |
-| 2.7 Backups | next | Restic |
-| 3 GitOps admin | partly done | `maildb` mirrors the inventory (incl. removals), keeps passwords changed by users; add/change/remove tests still missing |
+| 2.6 Webmail/groupware | done | Roundcube behind mandatory basic auth, Radicale, password self-service |
+| 2.7 Backups | done, CI pending | Restic: daily backup, weekly prune, restore tested through Dovecot, success metric |
+| 3 GitOps admin | mostly done, CI pending | `maildb` mirrors the inventory, keeps passwords changed by users, a new hash resets; mailbox add/remove tested, tests for changing aliases and app passwords still missing |
 | 4 Extended tests | open | DANE, disaster recovery, scheduled testing run |
 | 5 Documentation | open | README rewrite, DNS/ports cheat sheets, migration guide |
 
 ## Roles in `site.yml` (in order)
 
 preflight, unbound, nftables, fail2ban, nginx, certbot, maildb, mta_sts,
-autoconfig, rspamd, radicale, postfix, dovecot, roundcube,
+autoconfig, rspamd, postfix, dovecot, radicale, roundcube, restic,
 unattended_upgrades, systemd_timers, node_exporter.
-radicale runs before dovecot, which needs the owner of the auth socket.
 The legacy roles `common` and `mailserver` are no longer run and will be
 deleted once replaced.
 
@@ -48,11 +48,13 @@ deleted once replaced.
 | Mail exporters | Dovecot's own OpenMetrics endpoint (port 9900) instead of mtail | no syslog files on Debian 13; Postfix exporter differs widely between releases |
 | Rspamd web UI | localhost only (SSH tunnel), Debian's default password `q1` replaced by a random hash | |
 | Outbound MTA-STS | small socketmap shim: DANE (TLSA via DNSSEC) first, else postfix-mta-sts-resolver | the resolver alone lets MTA-STS override DANE (against RFC 8461) |
-| User admin | Ansible mirrors `group_vars`; users change their own main password in Roundcube, Ansible only sets the initial hash; app passwords admin-only | decided before 2.6 |
+| User admin | Ansible mirrors `group_vars`; users change their own main password in Roundcube; a new hash in the inventory resets it once and kicks open sessions; app passwords admin-only | no flag to clean up afterwards |
 | Webmail exposure | mandatory HTTP basic auth in front of Roundcube; the credentials are not passed to PHP | Roundcube is not trusted, users in general are; it keeps direct write access to the mail database |
 | Basic auth hashes | SHA-512 crypt only | nginx verifies in its event loop on every request; slow hashes would stall it |
 | App passwords in webmail | refused from loopback by Dovecot | Roundcube accepts the session password as "current password"; an app password must not be enough to change the main password |
 | Radicale auth | own plugin `sovereign_radicale_auth` | see findings; neither the built-in type nor `python3-radicale-dovecot-auth` is usable |
+| Dovecot auth socket | `/run/dovecot/auth-external`, group `dovecot-auth`, mode 0660 | services join the group; Dovecot need not know them, and no role order depends on it |
+| Backups required | the restic role fails without repository and password | no server without backups by accident; to be revisited with the optional roles |
 | Mail database location | `/var/lib/sovereign/maildb/`, owned by the `roundcube` user | the rollback journal needs a writable directory, and root runs scripts from `/var/lib/sovereign` |
 | Target hardware | 2 GB RAM | FTS indexer limited to one process |
 
@@ -105,6 +107,9 @@ deleted once replaced.
 - Debian 13 ships `/var/lib/radicale/collections` owned by root (Testing: by
   radicale); the role sets the owner.
 - Debian's Roundcube cron job does nothing under systemd; the role has a timer.
+- Dovecot 2.4.1 (Debian 13, not 2.4.5) fails the first query after a schema
+  change on its open SQLite connection ("SQL logic error"); schema migrations
+  must restart it. Ordinary writes are not affected.
 - Molecule finds `.config/molecule/config.yml` via the VCS root: without `.git`
   it silently ignores it and reports "Missing playbook".
 
@@ -114,10 +119,16 @@ deleted once replaced.
   penalty: a wrong password can delay other users' webmail logins by up to 15
   seconds. Accepted for now, since only holders of the basic auth credentials
   get that far.
-- Resetting a forgotten main password means updating the hash in the database
-  on the server; to document in Phase 5, together with
-  `roundcube_basic_auth_users` (required) and the `dav.<domain>` record.
+- To document in Phase 5: password reset via a new hash (the user should change
+  the temporary password; a reverted hash resets again; app passwords stay valid
+  until removed), `roundcube_basic_auth_users` (required), the `dav.<domain>` record.
 - `group_vars/mailservers.yml` still has the legacy variables; rewrite in Phase 5.
+- Make roundcube, radicale and restic optional (`*_enabled`, decided, deferred).
+  A `when:` on the role is not enough: its public defaults still reach other
+  roles (restic's timers, the Roundcube database in the backup), and disabling
+  must also remove what is already there, above all Roundcube's nginx site and
+  PHP-FPM, which can write the mail database. Fresh installs with a role disabled
+  need the disabled path to work when nothing was ever installed.
 - postsrsd milter mode (see findings).
 - Unbound: systemd-resolved is masked when present; check on real servers.
 - Role design documents: CONTRIBUTING.md asks for one per role; the new roles

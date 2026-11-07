@@ -151,11 +151,12 @@ Implementation order: 2.1, 2.2, the certificate part of 2.5, 2.3, 2.4, rest of 2
 
 ### 2.7 Backups (Restic)
 
-- **Restic** for encrypted offsite backups.
-- **systemd timers/services** for daily backups and retention pruning.
-- Backed up: `/var/vmail`, the mail database, the mail_crypt keys, DKIM keys, Roundcube and Radicale data.
+- **Restic** for encrypted offsite backups; `restic_repository` and `restic_password` are required, so no server runs without backups by accident.
+- **systemd timers/services** (through the `systemd_timers` role) for daily backups and weekly retention pruning.
+- Backed up: `/var/vmail`, consistent copies of the mail and Roundcube databases, the mail_crypt keys, DKIM keys, Radicale data, `/etc/letsencrypt` (DANE depends on the key) and the postsrsd secret. Not backed up: the FTS index, which Dovecot rebuilds, and Rspamd's Bayes data.
+- The time of the last successful backup is a node exporter metric (`sovereign_backup_last_success_timestamp_seconds`), for alerting on backups that stop.
 
-**Tests:** backup to a local test repository succeeds; restoring a mailbox and reading it back through Dovecot (including mail_crypt decryption) succeeds.
+**Tests:** backup to a local test repository succeeds and contains the keys and databases; restoring a mailbox and reading it back through Dovecot (including mail_crypt decryption) succeeds; the restored mail database is intact; pruning works; the metric is exported.
 
 ---
 
@@ -163,10 +164,11 @@ Implementation order: 2.1, 2.2, the certificate part of 2.5, 2.3, 2.4, rest of 2
 
 - The `maildb` role (written in Phase 2.3) acts strictly on `group_vars/mailservers.yml`: `mail_domains`, `mail_mailboxes` (with `app_passwords`) and `mail_aliases`.
 - Domains, mailboxes, App-Specific Passwords and aliases **precisely mirror** the code state, including removal of entries no longer defined; manual changes in the database are reverted on the next run.
-- **Password self-service:** users change their own main password in Roundcube (password plugin). Ansible sets the initial password hash when it creates a mailbox and does not touch it afterwards; everything else (domains, mailboxes, aliases, App-Specific Passwords) stays exactly mirrored. Roundcube therefore gets write access to the mail database (only it and Ansible write); App-Specific Passwords remain admin-managed via `group_vars`. An admin resets a forgotten password by updating the hash in the database on the server.
+- **Password self-service:** users change their own main password in Roundcube (password plugin). Ansible sets the initial password hash when it creates a mailbox and does not touch it afterwards; everything else (domains, mailboxes, aliases, App-Specific Passwords) stays exactly mirrored. Roundcube therefore gets write access to the mail database (only it and Ansible write); App-Specific Passwords remain admin-managed via `group_vars`.
+- **Password reset:** a new hash for a mailbox in the inventory replaces the password once, also one the user changed, and disconnects the user's open sessions. The database remembers the hash last applied (`inventory_password`), which is what the role compares; there is no flag to remove afterwards.
 - The database has its own directory, owned by Roundcube's PHP user, for the rollback journal; root's scripts stay in a directory only root can write. A small password driver opens the database with plain PDO, because Roundcube's database layer switches SQLite databases to WAL on connect.
 
-**Tests:** adding, changing and removing users, aliases and App-Specific Passwords in the variables is reflected in the database; a password changed by the user survives the next Ansible run; a second run reports no changes; a removed user can no longer log in.
+**Tests:** adding, changing and removing users, aliases and App-Specific Passwords in the variables is reflected in the database; a password changed by the user survives the next Ansible run; a new hash in the inventory resets it and ends open sessions; a second run reports no changes; a removed user can no longer log in.
 
 ---
 
@@ -251,6 +253,8 @@ Rewrite the README and Wiki to reflect the modernized, bare-metal deployment str
 | Postfix master.cf | Debian's own, submission added via `postconf` |
 | Implementation order | certificate part of 2.5 before 2.3 |
 | Password self-service | users change their main password in Roundcube; Ansible sets only the initial hash; App-Specific Passwords stay admin-managed |
+| Backups required | the restic role fails without repository and password |
+| Password reset | a changed hash in the inventory applies once, via the stored `inventory_password`; open sessions are kicked |
 | Webmail exposure | Roundcube is not trusted: mandatory HTTP basic auth in front of it; users in general are trusted, so Roundcube keeps direct write access to the mail database |
 | Basic auth hashes | SHA-512 crypt only: nginx verifies on every request in its event loop, slow hashes would stall it |
 | Radicale authentication | own small plugin instead of the built-in `dovecot` type or `python3-radicale-dovecot-auth`: `no-penalty`, one connection id per thread, correct Dovecot 2.4 handshake |
