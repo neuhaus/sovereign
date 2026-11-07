@@ -1,5 +1,9 @@
 """Shared helpers for the Molecule testinfra tests."""
 
+import base64
+import json
+import pathlib
+
 import pytest
 import testinfra
 
@@ -55,3 +59,14 @@ def peer(host):
 def probe(client, ip, port):
     """TCP connect from `client` to ip:port; returns open, refused or timeout."""
     return client.check_output("python3 -c %s %s %s", PROBE, ip, str(port))
+
+
+def mail_client(instance):
+    """Copy mailclient.py to an instance; returns a function running its commands."""
+    code = base64.b64encode((pathlib.Path(__file__).parent / "mailclient.py").read_bytes()).decode()
+    instance.check_output("echo %s | base64 -d > /tmp/mailclient.py", code)
+
+    def run(*args):
+        return json.loads(instance.check_output("python3 /tmp/mailclient.py " + " ".join(["%s"] * len(args)), *args))
+
+    return run

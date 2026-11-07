@@ -1,6 +1,6 @@
 ---
 # The mail database mirrors these inventory variables exactly, except for
-# existing mailbox passwords: entries that are no longer listed are removed.
+# passwords users changed themselves: entries no longer listed are removed.
 # Set them in group_vars/mailservers.yml.
 #
 #   mail_domains:
@@ -8,10 +8,12 @@
 #
 #   mail_mailboxes:
 #     - address: alice@example.org
-#       # doveadm pw -s ARGON2ID (Argon2id hashes only). Initial password: set
-#       # when the mailbox is created and not touched afterwards, because users
-#       # change their password in Roundcube. To reset a forgotten password,
-#       # update the hash in the database on the server.
+#       # doveadm pw -s ARGON2ID (Argon2id hashes only). Applied when the mailbox
+#       # is created and whenever this hash changes. Users change their password
+#       # in Roundcube and that is kept, so a new hash here is a password reset:
+#       # it applies once and disconnects the user's open sessions. App passwords
+#       # stay valid; remove them too if the account is compromised. Reverting to
+#       # an earlier hash is also a change, so it resets the password as well.
 #       password: "{ARGON2ID}$argon2id$v=19$m=65536,t=3,p=1$..."
 #       quota_mb: 0          # optional, 0 = unlimited
 #       enabled: true        # optional; disabled mailboxes cannot log in

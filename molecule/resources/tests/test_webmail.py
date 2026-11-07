@@ -4,13 +4,12 @@ Clients run on the dns instance, which fail2ban ignores; pebble plays the
 attacker in the ban tests.
 """
 
-import base64
-import json
-import pathlib
 import time
 import uuid
 
 import pytest
+
+from conftest import mail_client
 
 testinfra_hosts = ["mail"]
 
@@ -37,24 +36,14 @@ def ctx(sovtest_vars):
     }
 
 
-def make_client(instance):
-    code = base64.b64encode((pathlib.Path(__file__).parent / "mailclient.py").read_bytes()).decode()
-    instance.check_output("echo %s | base64 -d > /tmp/mailclient.py", code)
-
-    def run(*args):
-        return json.loads(instance.check_output("python3 /tmp/mailclient.py " + " ".join(["%s"] * len(args)), *args))
-
-    return run
-
-
 @pytest.fixture(scope="module")
 def client(peer):
-    return make_client(peer("dns"))
+    return mail_client(peer("dns"))
 
 
 @pytest.fixture(scope="module")
 def attacker(peer):
-    return make_client(peer("pebble"))
+    return mail_client(peer("pebble"))
 
 
 def wait_for(check, seconds=30):
@@ -207,10 +196,11 @@ def test_password_change(host, client, ctx):
 
 
 def test_maildb_does_not_see_changed_password_as_a_difference(host):
-    # The export the role compares with the inventory has no mailbox hashes.
+    # The role compares the inventory with the hash it last applied, not the
+    # live one (test_password_change above changed carol's).
+    live = host.check_output("sqlite3 %s %s", DB, "SELECT password FROM mailboxes WHERE localpart = 'carol'")
     export = host.check_output("sqlite3 -batch -noheader %s '.read /var/lib/sovereign/export.sql'", DB)
-    mailboxes = [line for line in export.splitlines() if line.startswith("mailbox|")]
-    assert mailboxes and not [line for line in mailboxes if "ARGON2ID" in line]
+    assert "mailbox|carol@" in export and live not in export
 
 
 # --- Radicale -----------------------------------------------------------------

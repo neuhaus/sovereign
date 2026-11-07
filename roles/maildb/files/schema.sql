@@ -1,4 +1,4 @@
--- Sovereign mail database (SQLite), schema version 1.
+-- Sovereign mail database (SQLite), schema version 2.
 -- Managed by Ansible (maildb role). Applied when the database is created and
 -- whenever this file changes; must stay idempotent.
 PRAGMA foreign_keys = ON;
@@ -14,6 +14,9 @@ CREATE TABLE IF NOT EXISTS mailboxes (
     localpart TEXT NOT NULL,
     domain    TEXT NOT NULL REFERENCES domains(name) ON DELETE CASCADE,
     password  TEXT NOT NULL,
+    -- Hash last taken from the inventory. Users change "password" in Roundcube;
+    -- a new hash in the inventory resets it once. Empty: not known yet.
+    inventory_password TEXT NOT NULL DEFAULT '',
     quota_mb  INTEGER NOT NULL DEFAULT 0,
     enabled   INTEGER NOT NULL DEFAULT 1,
     PRIMARY KEY (localpart, domain)
@@ -38,4 +41,4 @@ CREATE TABLE IF NOT EXISTS aliases (
     PRIMARY KEY (source, destination)
 );
 
-PRAGMA user_version = 1;
+PRAGMA user_version = 2;

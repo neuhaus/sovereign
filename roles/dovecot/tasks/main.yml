@@ -153,3 +153,12 @@
     name: dovecot
     state: started
     enabled: true
+
+# Exit code 68: the user had no open session.
+- name: Disconnect users whose password was reset
+  ansible.builtin.command:
+    argv: [doveadm, -c, /etc/dovecot/dovecot.conf, kick, "{{ item }}"]
+  loop: "{{ dovecot_kick_addresses }}"
+  register: dovecot_kick
+  changed_when: dovecot_kick.rc == 0
+  failed_when: dovecot_kick.rc not in [0, 68]

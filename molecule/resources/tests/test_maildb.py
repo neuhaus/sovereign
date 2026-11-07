@@ -43,7 +43,7 @@ def test_database_mirrors_inventory(host, sovtest_vars):
 
 
 def test_schema_version(host):
-    assert query(host, "PRAGMA user_version") == ["1"]
+    assert query(host, "PRAGMA user_version") == ["2"]
 
 
 def test_nginx_cannot_write_the_database(host):

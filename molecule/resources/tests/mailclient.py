@@ -21,6 +21,7 @@ import smtplib
 import socket
 import ssl
 import sys
+import time
 import urllib.parse
 import zipfile
 from email.message import EmailMessage
@@ -164,6 +165,21 @@ def cmd_imap_login(host, port, user, password):
         out(ok=True)
     except imaplib.IMAP4.error as exc:
         out(ok=False, error=str(exc))
+
+
+def cmd_imap_hold(host, user, password, seconds):
+    """Stay logged in; prints whether the server ended the session."""
+    imap = imaplib.IMAP4_SSL(host, 993, ssl_context=ctx())
+    imap.login(user, password)
+    try:
+        for _ in range(int(seconds)):
+            imap.noop()
+            time.sleep(1)
+    except (imaplib.IMAP4.abort, OSError) as exc:
+        out(disconnected=True, error=str(exc))
+        return
+    imap.logout()
+    out(disconnected=False)
 
 
 def cmd_imap_plain(host, user, password):
@@ -453,6 +469,7 @@ COMMANDS = {
     "smtp": cmd_smtp,
     "imap-count": cmd_imap_count,
     "imap-login": cmd_imap_login,
+    "imap-hold": cmd_imap_hold,
     "imap-plain": cmd_imap_plain,
     "imap-headers": cmd_imap_headers,
     "imap-move": cmd_imap_move,

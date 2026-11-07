@@ -105,6 +105,34 @@
     path: "{{ maildb_path }}"
   register: maildb_file
 
+- name: Read the schema version
+  ansible.builtin.command:
+    argv: [sqlite3, -batch, -noheader, "{{ maildb_path }}", "PRAGMA user_version"]
+  register: maildb_schema_version
+  changed_when: false
+  when: maildb_file.stat.exists
+
+# Runs before schema.sql, which sets the new version. Empty inventory hashes
+# are filled in by the next synchronisation without resetting any password.
+# Dovecot 2.4.1 fails the first query after a schema change on its open
+# connection, hence the restart (handled by the dovecot role).
+- name: Migrate the schema from version 1
+  ansible.builtin.command:
+    argv:
+      - sqlite3
+      - -bail
+      - -cmd
+      - .timeout 10000
+      - "{{ maildb_path }}"
+      - >-
+        BEGIN IMMEDIATE;
+        ALTER TABLE mailboxes ADD COLUMN inventory_password TEXT NOT NULL DEFAULT '';
+        PRAGMA user_version = 2;
+        COMMIT;
+  when: maildb_file.stat.exists and maildb_schema_version.stdout | trim == '1'
+  changed_when: true
+  notify: Dovecot configuration changed
+
 - name: Create or update the schema
   ansible.builtin.command:
     argv: [sqlite3, -bail, "{{ maildb_path }}", ".read {{ maildb_dir }}/schema.sql"]
@@ -124,6 +152,11 @@
   register: maildb_current
   changed_when: false
   no_log: true
+
+# Used by the dovecot role to disconnect these users after the synchronisation.
+- name: Find mailboxes whose password is being reset
+  ansible.builtin.set_fact:
+    maildb_reset_addresses: "{{ lookup('ansible.builtin.template', 'reset-addresses.json.j2') | from_json }}"
 
 # The synchronisation script contains password hashes: root only.
 - name: Render the synchronisation script

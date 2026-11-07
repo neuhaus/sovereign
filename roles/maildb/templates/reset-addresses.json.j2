@@ -1,0 +1,10 @@
+{% set stored = {} %}
+{% for line in maildb_current.stdout_lines if line.startswith('mailbox|') %}
+{% set fields = line.split('|') %}
+{% set _ = stored.update({fields[1]: fields[2]}) %}
+{% endfor %}
+{% set resets = [] %}
+{% for mailbox in maildb_mailboxes if stored.get(mailbox.address, '') not in ['', mailbox.password] %}
+{% set _ = resets.append(mailbox.address) %}
+{% endfor %}
+{{ resets | to_json }}

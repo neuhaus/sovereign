@@ -1,0 +1,14 @@
+---
+# Run by test_password_reset.py with changed inventory variables, so that the
+# tests exercise the real roles.
+- name: Apply the mail database and dovecot roles
+  hosts: mailservers
+  become: true
+  gather_facts: true
+  vars:
+    # Default of the radicale role, which does not run here; without it dovecot's
+    # configuration would lose Radicale's authentication socket.
+    radicale_dovecot_socket: auth-radicale
+  roles:
+    - role: maildb
+    - role: dovecot
