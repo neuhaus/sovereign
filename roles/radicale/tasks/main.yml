@@ -25,6 +25,13 @@
     update_cache: true
     cache_valid_time: 3600
 
+- name: Allow radicale to use Dovecot's authentication socket
+  ansible.builtin.user:
+    name: "{{ radicale_user }}"
+    groups: "{{ radicale_dovecot_group }}"
+    append: true
+  notify: Radicale configuration changed
+
 # Debian 13 ships this directory owned by root.
 - name: Create the storage directory
   ansible.builtin.file:

@@ -25,6 +25,11 @@
     group: "{{ dovecot_vmail_user }}"
     mode: "0700"
 
+- name: Create the group for the authentication socket
+  ansible.builtin.group:
+    name: "{{ dovecot_auth_group }}"
+    system: true
+
 # The auth worker runs as the dovecot user and reads the mail database.
 - name: Allow dovecot to read the mail database
   ansible.builtin.user:

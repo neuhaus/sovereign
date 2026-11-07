@@ -219,14 +219,12 @@ service auth {
     group = postfix
     mode = 0660
   }
-{% if dovecot_radicale_socket %}
-  # CalDAV/CardDAV logins (Radicale).
-  unix_listener {{ dovecot_radicale_socket }} {
-    user = {{ dovecot_radicale_user }}
-    group = {{ dovecot_radicale_user }}
-    mode = 0600
+  # Logins of other local services (Radicale), for members of this group.
+  unix_listener {{ dovecot_auth_socket }} {
+    user = dovecot
+    group = {{ dovecot_auth_group }}
+    mode = 0660
   }
-{% endif %}
 }
 
 # Metrics in OpenMetrics format on http://<host>:{{ dovecot_metrics_port }}/metrics.

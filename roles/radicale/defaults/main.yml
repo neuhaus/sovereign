@@ -8,8 +8,10 @@ radicale_user: radicale
 radicale_port: 5232
 radicale_storage_dir: /var/lib/radicale/collections
 
-# Dovecot checks the logins (main and app passwords). Relative to /run/dovecot.
-radicale_dovecot_socket: auth-radicale
+# Dovecot checks the logins (main and app passwords): socket in /run/dovecot and
+# the group with access to it, both from the dovecot role.
+radicale_dovecot_socket: "{{ dovecot_auth_socket | default('auth-external') }}"
+radicale_dovecot_group: "{{ dovecot_auth_group | default('dovecot-auth') }}"
 
 # Calendars and address books several users share, served at
 # https://<radicale_host>/shared/<name>/. Access follows this list exactly;

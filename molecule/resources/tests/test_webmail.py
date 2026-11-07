@@ -216,6 +216,17 @@ def test_radicale_only_on_loopback(host):
     assert not host.socket("tcp://0.0.0.0:5232").is_listening
 
 
+def test_auth_socket_only_for_its_group(host):
+    socket_file = host.file("/run/dovecot/auth-external")
+    assert socket_file.is_socket
+    assert (socket_file.group, socket_file.mode) == ("dovecot-auth", 0o660)
+    assert "dovecot-auth" in host.user("radicale").groups
+    # Roundcube's PHP user and nginx must not be able to try passwords through it.
+    for user in ("roundcube", "www-data"):
+        assert host.run("runuser -u %s -- test -w /run/dovecot/auth-external", user).rc != 0
+    assert host.run("runuser -u radicale -- test -w /run/dovecot/auth-external").rc == 0
+
+
 def test_certificate_verified_on_dav(host, ctx):
     code = host.check_output("curl -s -o /dev/null -w '%%{http_code}' --resolve %s:443:127.0.0.1 https://%s/", ctx["dav"], ctx["dav"])
     assert code != "000"

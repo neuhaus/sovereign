@@ -25,10 +25,10 @@ dovecot_maildb_group: "{{ maildb_group | default('maildb') }}"
 # Mailboxes whose password the maildb role just reset: their open sessions end.
 dovecot_kick_addresses: "{{ maildb_reset_addresses | default([]) }}"
 
-# Authentication socket for Radicale (radicale role, which must run first:
-# Dovecot refuses to start if the socket's owner does not exist).
-dovecot_radicale_socket: "{{ radicale_dovecot_socket | default('') }}"
-dovecot_radicale_user: "{{ radicale_user | default('radicale') }}"
+# Authentication socket for local services that check logins against Dovecot,
+# /run/dovecot/<name>. Services get access by joining this group.
+dovecot_auth_socket: auth-external
+dovecot_auth_group: dovecot-auth
 
 # At-rest encryption (mail_crypt) with one global EC key pair. BACK UP the
 # private key: without it the mail cannot be read.
