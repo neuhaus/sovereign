@@ -1,9 +1,8 @@
 ---
 # Top-level playbook: configures every host in the `mailservers` group.
 #
-# Roles are added here as they are rewritten for Debian 13 / Testing (see the
-# modernization plan). The legacy roles common and mailserver are not
-# run any more; they are replaced step by step in Phase 2.
+# Settings: inventory/group_vars/mailservers.yml. Run with:
+#   ansible-playbook -i inventory site.yml
 
 - name: Configure Sovereign mail servers
   hosts: mailservers

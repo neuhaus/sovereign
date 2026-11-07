@@ -1,0 +1,66 @@
+---
+# Settings of your mail server. Adapt everything marked EXAMPLE, keep secrets in
+# Ansible Vault, and keep this file under version control: domains, mailboxes and
+# aliases on the server follow it exactly. See docs/ADMINISTRATION.md.
+#
+# The password placeholders are not valid hashes on purpose: the first run stops
+# with a clear message until they are replaced.
+
+# --- Names and certificate ----------------------------------------------------
+# The first name is the mail host (MX target, webmail) and needs a matching PTR
+# record. All names must resolve to this server before the first run: the
+# certificate is requested for them over HTTP.
+certbot_email: postmaster@example.org   # EXAMPLE
+certbot_domains:
+  - mail.example.org          # EXAMPLE
+  - mta-sts.example.org
+  - autoconfig.example.org
+  - autodiscover.example.org
+  - dav.example.org           # CalDAV/CardDAV, first mail domain only
+  # Every further mail domain needs its mta-sts., autoconfig. and autodiscover.
+  # names here, see "Multiple domains" in docs/ADMINISTRATION.md.
+
+# --- Mail -----------------------------------------------------------------------
+mail_domains:
+  - example.org               # EXAMPLE
+
+mail_mailboxes:
+  - address: alice@example.org   # EXAMPLE
+    # doveadm pw -s ARGON2ID
+    # Initial password; users change it in the webmail. A new hash resets it.
+    password: "CHANGE_ME"
+    # An app password starts with its 8-character id:
+    # app_passwords:
+    #   - name: phone
+    #     id: PhOnE001
+    #     password: "{ARGON2ID}$argon2id$..."   # hash of "PhOnE001-<secret>"
+
+mail_aliases:
+  - source: postmaster@example.org
+    destinations: [alice@example.org]
+  - source: abuse@example.org
+    destinations: [alice@example.org]
+
+# --- Webmail --------------------------------------------------------------------
+# Basic auth in front of Roundcube, required. Generate with: openssl passwd -6
+roundcube_basic_auth_users:
+  - name: family              # EXAMPLE
+    password: "CHANGE_ME"
+
+# --- Calendars and contacts -----------------------------------------------------
+# radicale_shared_collections:
+#   - name: family
+#     type: calendar          # or addressbook
+#     display_name: Family
+#     users: [alice@example.org, bob@example.org]
+
+# --- Backups, required ----------------------------------------------------------
+restic_repository: "CHANGE_ME"   # e.g. s3:https://s3.example.net/bucket/mail
+restic_password: "{{ vault_restic_password }}"
+# restic_environment:
+#   AWS_ACCESS_KEY_ID: "{{ vault_backup_key_id }}"
+#   AWS_SECRET_ACCESS_KEY: "{{ vault_backup_key }}"
+
+# --- Monitoring -----------------------------------------------------------------
+# Addresses allowed to scrape ports 9100 and 9900. Empty: both stay closed.
+monitoring_sources: []

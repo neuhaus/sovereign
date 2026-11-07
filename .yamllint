@@ -1,12 +1,6 @@
 ---
 extends: default
 
-# Legacy paths, see .ansible-lint for why they are excluded.
-ignore: |
-  group_vars/
-  roles/common/
-  roles/mailserver/
-
 rules:
   # Settings compatible with ansible-lint's own yamllint expectations.
   comments:
