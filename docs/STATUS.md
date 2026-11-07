@@ -5,9 +5,19 @@ Working notes for the Debian 13 / Testing rebuild of Sovereign (branch
 The plan itself, with the decisions worked in, is [PLAN.md](PLAN.md).
 
 Last update: Phases 0-5 complete, including password reset, multiple mail domains
-and append-only backups, confirmed by CI at `c99e2ce`. Since then the `openssh` role
-(key logins only), the `timesyncd` role (`ntp_servers`) and `docs/ROLES.md`. Not yet
-run on a real server. Next: Phase 6 (split setup).
+and append-only backups. Added since: the `openssh` role (key logins only), the
+`timesyncd` role (`ntp_servers`) and `docs/ROLES.md`.
+
+Results at `e97fe72`:
+
+| Run | Debian 13 | Testing |
+|---|---|---|
+| CI (containers) | passed | passed |
+| Local, containers | 263 passed | 263 passed |
+| Local, `mail` as a 2 GiB VM | 263 passed | **262 passed, 1 failed** |
+
+Converge and idempotence passed in all of these. The failure is open, see below.
+Not yet run on a real server. Next: fix that failure, then Phase 6 (split setup).
 
 ## Phases
 
@@ -130,7 +140,15 @@ unattended_upgrades, systemd_timers, node_exporter.
 - To document in Phase 5: password reset via a new hash (the user should change
   the temporary password; a reverted hash resets again; app passwords stay valid
   until removed), `roundcube_basic_auth_users` (required), the `dav.<domain>` record.
-- Nothing has run on a real server yet, only in containers. To check there: LUKS
+- **Failing on Testing as a VM:** `test_no_failed_units` finds the system degraded,
+  because `systemd-resolved-varlink.socket` failed: "Unit systemd-resolved.service
+  is masked". systemd 262 in Testing adds this socket and
+  `systemd-resolved-monitor.socket`; the `unbound` role masks only the service.
+  Debian 13 (systemd 257) has no varlink socket. Likely fix, not yet made or tested:
+  mask the sockets too. CI doesn't catch this, as it runs containers only. A VM run
+  of the older code, before `openssh` and `timesyncd`, passed earlier the same day;
+  why is not known.
+- Nothing has run on a real server yet, only in containers and VMs. To check there: LUKS
   remote unlock, the migration guide, certificates from Let's Encrypt.
 - Shared mail folders: not scheduled, see "Later" in [PLAN.md](PLAN.md).
 - Make roundcube, radicale and restic optional (`*_enabled`, decided, deferred).
