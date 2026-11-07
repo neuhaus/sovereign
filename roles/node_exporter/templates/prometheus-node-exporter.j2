@@ -1,3 +1,3 @@
 # {{ ansible_managed }}
 # Arguments for prometheus-node-exporter, see `prometheus-node-exporter --help`.
-ARGS="--web.listen-address={{ node_exporter_listen_address }}"
+ARGS="--web.listen-address={{ node_exporter_listen_address }} --collector.textfile.directory={{ node_exporter_textfile_dir }}"

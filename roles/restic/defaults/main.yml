@@ -1,0 +1,67 @@
+---
+# Encrypted offsite backups. Both are required: the role fails without them, so
+# that no server runs without backups by accident.
+#
+#   restic_repository: s3:https://s3.example.net/my-bucket/mail
+#   restic_password: "{{ vault_restic_password }}"
+#
+# KEEP A COPY OF THE PASSWORD OUTSIDE THIS SERVER: without it the backups are
+# useless. It also protects the mail_crypt private key in the backups.
+restic_repository: ""
+restic_password: ""
+
+# Further environment for the repository backend, e.g. its credentials:
+#
+#   restic_environment:
+#     AWS_ACCESS_KEY_ID: "{{ vault_backup_key_id }}"
+#     AWS_SECRET_ACCESS_KEY: "{{ vault_backup_key }}"
+restic_environment: {}
+
+# Retention, applied by the prune job.
+restic_keep_daily: 7
+restic_keep_weekly: 4
+restic_keep_monthly: 6
+
+restic_backup_on_calendar: "*-*-* 03:00:00"
+restic_prune_on_calendar: "Sun *-*-* 05:00:00"
+
+# SQLite databases are copied consistently into this directory, which is backed
+# up, because the live files may change while restic reads them.
+restic_staging_dir: /var/backups/sovereign
+restic_databases:
+  - {name: mail.sqlite, path: "{{ maildb_path | default('/var/lib/sovereign/maildb/mail.sqlite') }}"}
+  - {name: roundcube.sqlite, path: /var/lib/dbconfig-common/sqlite3/roundcube/roundcube}
+
+# Everything that cannot be recreated. The certificate's key is here because
+# the DANE TLSA records depend on it; the postsrsd secret because bounces to
+# forwarded mail need it. Rspamd's Bayes data in Redis can be relearned.
+restic_paths:
+  - "{{ restic_staging_dir }}"
+  - "{{ dovecot_vmail_dir | default('/var/vmail') }}"
+  - "{{ dovecot_mail_crypt_dir | default('/etc/dovecot/mail-crypt') }}"
+  - /var/lib/rspamd/dkim
+  - "{{ radicale_storage_dir | default('/var/lib/radicale/collections') }}"
+  - /etc/letsencrypt
+  - /etc/postsrsd.secret
+
+# Not needed: Dovecot rebuilds the full-text index, which also holds search
+# terms in plaintext.
+restic_excludes:
+  - fts-flatcurve
+
+# Directory of the node exporter's textfile collector: the backup job records
+# the time of its last success there, for alerting on backups that stop.
+restic_metrics_dir: "{{ node_exporter_textfile_dir | default('/var/lib/prometheus/node-exporter') }}"
+
+# Picked up by the systemd_timers role.
+restic_timer_jobs:
+  - name: backup
+    description: Encrypted backup with restic
+    command: /usr/local/sbin/sovereign-backup run
+    on_calendar: "{{ restic_backup_on_calendar }}"
+    randomized_delay: 30m
+  - name: backup-prune
+    description: Apply the backup retention policy
+    command: /usr/local/sbin/sovereign-backup prune
+    on_calendar: "{{ restic_prune_on_calendar }}"
+    randomized_delay: 30m

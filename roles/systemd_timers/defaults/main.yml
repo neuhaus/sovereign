@@ -12,3 +12,6 @@
 #       randomized_delay: 30m    # optional, default 0
 #       persistent: true         # optional, default true: catch up missed runs
 systemd_timers_jobs: []
+
+# With the jobs of other roles, e.g. the restic role's backups.
+systemd_timers_all_jobs: "{{ systemd_timers_jobs + (restic_timer_jobs | default([])) }}"

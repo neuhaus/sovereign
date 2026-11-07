@@ -1,0 +1,65 @@
+#!/bin/bash
+# {{ ansible_managed }}
+#
+# sovereign-backup init   create the repository if there is none
+# sovereign-backup run    back up databases, mail and keys
+# sovereign-backup prune  apply the retention policy
+#
+# Other restic commands: set -a; . /etc/restic/env; set +a; restic snapshots
+set -euo pipefail
+set -a
+. /etc/restic/env
+set +a
+
+case "${1:-}" in
+init)
+    # Exit code 10: no repository. Anything else (network down, wrong password)
+    # must not create one.
+    rc=0
+    restic cat config >/dev/null 2>&1 || rc=$?
+    case $rc in
+    0) ;;
+    10)
+        restic init
+        echo initialised
+        ;;
+    *)
+        echo "cannot read the repository (restic exit code $rc)" >&2
+        exit "$rc"
+        ;;
+    esac
+    ;;
+run)
+{% for database in restic_databases %}
+    sqlite3 -bail -cmd ".timeout 30000" {{ database.path | quote }} ".backup {{ restic_staging_dir }}/{{ database.name }}.new"
+    mv {{ restic_staging_dir }}/{{ database.name }}.new {{ restic_staging_dir }}/{{ database.name }}
+{% endfor %}
+    # Exit code 3: a snapshot was made, but some files could not be read. On a
+    # live Maildir these are files Dovecot renamed in the meantime; they are
+    # picked up next time under the new name.
+    rc=0
+    restic backup --one-file-system --retry-lock 30m --tag sovereign \
+{% for exclude in restic_excludes %}
+        --exclude {{ exclude | quote }} \
+{% endfor %}
+        {{ restic_paths | map('quote') | join(' ') }} || rc=$?
+    if [ "$rc" -ne 0 ] && [ "$rc" -ne 3 ]; then
+        exit "$rc"
+    fi
+    [ "$rc" -eq 0 ] || echo "warning: some files changed during the backup" >&2
+    metric={{ restic_metrics_dir }}/sovereign_backup.prom
+    printf 'sovereign_backup_last_success_timestamp_seconds %s\n' "$(date +%s)" > "$metric.new"
+    chmod 0644 "$metric.new"
+    mv "$metric.new" "$metric"
+    ;;
+prune)
+    restic forget --prune --retry-lock 30m --tag sovereign \
+        --keep-daily {{ restic_keep_daily }} \
+        --keep-weekly {{ restic_keep_weekly }} \
+        --keep-monthly {{ restic_keep_monthly }}
+    ;;
+*)
+    echo "usage: $0 init|run|prune" >&2
+    exit 2
+    ;;
+esac

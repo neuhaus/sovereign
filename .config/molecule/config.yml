@@ -119,6 +119,9 @@ provisioner:
             type: calendar
             display_name: Family
             users: ["alice@{{ sovtest_domain }}", "bob@{{ sovtest_domain }}"]
+        # Backups stay on the instance; password for tests only.
+        restic_repository: /var/backups/restic-test
+        restic_password: sovtest-restic-pass
         # bob's submissions test the outbound rate limit.
         rspamd_ratelimit_user_burst: 10
         rspamd_ratelimit_user_rate: "1 / 1h"

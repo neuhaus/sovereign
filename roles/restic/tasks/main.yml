@@ -1,0 +1,64 @@
+---
+- name: Assert that backups are configured
+  ansible.builtin.assert:
+    that:
+      - restic_repository | length > 0
+      - restic_password | length > 0
+    fail_msg: Set restic_repository and restic_password (see roles/restic/defaults/main.yml).
+    quiet: true
+  no_log: true
+
+- name: Install restic
+  ansible.builtin.apt:
+    name:
+      - restic
+      - sqlite3
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+
+- name: Create the directories
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "{{ item.mode }}"
+  loop:
+    - {path: /etc/restic, mode: "0700"}
+    - {path: /var/cache/restic, mode: "0700"}
+    # Holds copies of the password hashes.
+    - {path: "{{ restic_staging_dir }}", mode: "0700"}
+    - {path: "{{ restic_metrics_dir }}", mode: "0755"}
+
+- name: Install the repository password
+  ansible.builtin.copy:
+    content: "{{ restic_password }}\n"
+    dest: /etc/restic/password
+    owner: root
+    group: root
+    mode: "0600"
+  no_log: true
+
+- name: Install the repository settings
+  ansible.builtin.template:
+    src: env.j2
+    dest: /etc/restic/env
+    owner: root
+    group: root
+    mode: "0600"
+  no_log: true
+
+- name: Install the backup script
+  ansible.builtin.template:
+    src: sovereign-backup.j2
+    dest: /usr/local/sbin/sovereign-backup
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Initialise the repository
+  ansible.builtin.command:
+    argv: [/usr/local/sbin/sovereign-backup, init]
+  register: restic_init
+  changed_when: "'initialised' in restic_init.stdout"

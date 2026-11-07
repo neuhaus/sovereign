@@ -8,7 +8,7 @@
       - item.on_calendar is defined
     fail_msg: "Invalid entry in systemd_timers_jobs: {{ item }}"
     quiet: true
-  loop: "{{ systemd_timers_jobs }}"
+  loop: "{{ systemd_timers_all_jobs }}"
   loop_control:
     label: "{{ item.name | default('?') }}"
 
@@ -19,7 +19,7 @@
     owner: root
     group: root
     mode: "0644"
-  loop: "{{ systemd_timers_jobs }}"
+  loop: "{{ systemd_timers_all_jobs }}"
   loop_control:
     label: "{{ item.name }}"
   notify: Reload systemd
@@ -31,7 +31,7 @@
     owner: root
     group: root
     mode: "0644"
-  loop: "{{ systemd_timers_jobs }}"
+  loop: "{{ systemd_timers_all_jobs }}"
   loop_control:
     label: "{{ item.name }}"
   notify: Reload systemd
@@ -47,7 +47,7 @@
     systemd_timers_stale: >-
       {{ systemd_timers_installed.files | map(attribute='path') | map('basename')
          | map('regex_replace', '[.]timer$', '')
-         | difference(systemd_timers_jobs | map(attribute='name') | map('regex_replace', '^', 'sovereign-'))
+         | difference(systemd_timers_all_jobs | map(attribute='name') | map('regex_replace', '^', 'sovereign-'))
          | list }}
 
 - name: Stop and disable timers that are no longer defined
@@ -71,17 +71,17 @@
   ansible.builtin.command:
     argv: >-
       {{ ['systemd-analyze', 'verify']
-         + (systemd_timers_jobs | map(attribute='name')
+         + (systemd_timers_all_jobs | map(attribute='name')
             | map('regex_replace', '^', '/etc/systemd/system/sovereign-')
             | map('regex_replace', '$', '.timer') | list) }}
   changed_when: false
-  when: systemd_timers_jobs | length > 0
+  when: systemd_timers_all_jobs | length > 0
 
 - name: Enable timers
   ansible.builtin.systemd_service:
     name: "sovereign-{{ item.name }}.timer"
     state: started
     enabled: true
-  loop: "{{ systemd_timers_jobs }}"
+  loop: "{{ systemd_timers_all_jobs }}"
   loop_control:
     label: "{{ item.name }}"

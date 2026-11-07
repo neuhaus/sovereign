@@ -92,7 +92,7 @@ The design description should be succinct and to the point. Assume the reader is
 
 Consider the following checklist when reviewing a module's design.
 
-- Does the role create data on the server that is impossible or difficult to reproduce, e.g., private keys? If so, make sure it is included in backups.
+- Does the role create data on the server that is impossible or difficult to reproduce, e.g., private keys? If so, add it to `restic_paths` in the restic role (SQLite databases to `restic_databases`).
 - Does the role need a certificate for a new host name? If so, add it to `certbot_domains`; the certbot role reissues the certificate with the same key.
 - Does the role add an nginx site? If so, it includes `/etc/nginx/snippets/sovereign-tls.conf` for HTTPS, its host names are in `certbot_domains`, it notifies `Nginx configuration changed` (handled by the nginx role, do not redefine it), and somebody knowledgeable in nginx configuration and security has reviewed it.
 - Can the role's service write to a directory containing something root executes? SQLite writers need write access to the database's directory, so keep that directory separate.

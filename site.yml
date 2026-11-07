@@ -24,6 +24,7 @@
     - role: dovecot
     - role: radicale
     - role: roundcube
+    - role: restic
     - role: unattended_upgrades
     - role: systemd_timers
     - role: node_exporter
