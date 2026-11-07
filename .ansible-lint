@@ -8,4 +8,3 @@ exclude_paths:
   - group_vars/
   - roles/common/
   - roles/mailserver/
-  - roles/webmail/

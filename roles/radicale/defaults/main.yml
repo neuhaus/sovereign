@@ -1,0 +1,26 @@
+---
+# CalDAV/CardDAV host name, behind nginx. Publish it in DNS and add it to
+# certbot_domains. A name of its own keeps the data users upload off the origin
+# of the webmail.
+radicale_host: "dav.{{ (mail_domains | default(['example.org']))[0] }}"
+
+radicale_user: radicale
+radicale_port: 5232
+radicale_storage_dir: /var/lib/radicale/collections
+
+# Dovecot checks the logins (main and app passwords). Relative to /run/dovecot.
+radicale_dovecot_socket: auth-radicale
+
+# Calendars and address books several users share, served at
+# https://<radicale_host>/shared/<name>/. Access follows this list exactly;
+# removing an entry revokes all access but keeps the data on disk.
+#
+#   radicale_shared_collections:
+#     - name: family               # [a-z0-9-]+
+#       type: calendar             # or addressbook
+#       display_name: Family
+#       users: [alice@example.org, bob@example.org]
+radicale_shared_collections: []
+
+# Largest accepted upload (address books with photos can get big).
+radicale_max_body_size: 50M

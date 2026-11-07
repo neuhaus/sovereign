@@ -89,7 +89,7 @@ Implementation order: 2.1, 2.2, the certificate part of 2.5, 2.3, 2.4, rest of 2
 
 ### 2.3 Mail Transport (Postfix & Dovecot 2.4)
 
-- **Mail database: SQLite** (one file, no database server, Ansible is the only writer). Postfix reads it through proxymap, Dovecot read-only; rollback journal (WAL would require write access for every reader).
+- **Mail database: SQLite** (one file, no database server; Ansible and, for password changes, Roundcube are the only writers). Postfix reads it through proxymap, Dovecot read-only; rollback journal (WAL would require write access for every reader).
 - Dovecot authentication with **Argon2id** password hashes. **App-Specific Passwords** start with an 8-character id (`PhOnE001-...`): Dovecot 2.4 fails a passdb lookup that returns several rows, so the app password row is selected by that prefix and its hash verified as usual.
 - Enforce **TLS 1.2/1.3**, **DANE** (outbound) and strong ECDHE ciphers in Postfix and Dovecot.
 - **At-rest encryption:** Dovecot mail_crypt with a globally generated EC keypair encrypting all Maildir message files. *(Dovecot's index cache and the FTS index keep header fields and terms in plaintext; their protection relies on LUKS.)*
@@ -140,10 +140,14 @@ Implementation order: 2.1, 2.2, the certificate part of 2.5, 2.3, 2.4, rest of 2
 
 ### 2.6 Webmail & Groupware
 
-- **Roundcube** with the Elastic theme and ManageSieve plugin; its own SQLite database (preferences, contacts, sessions).
-- **Radicale** (`radicale`, `python3-radicale-dovecot-auth`) for CalDAV/CardDAV, authenticating against Dovecot; the rights file for shared calendars and address books is generated from declarative group variables.
+- **Roundcube** with the Elastic theme and the ManageSieve and password plugins; its own SQLite database (preferences, contacts, sessions), managed by Debian's dbconfig-common. Debian's cron job does nothing under systemd, so a timer runs its maintenance.
+  - **Mandatory HTTP basic auth** in front of the whole site (nginx, `roundcube_basic_auth_users`): Roundcube is not trusted, so nothing reaches its PHP code without it. Users in general are trusted. Roundcube never sees these credentials. Failed attempts go to the `nginx-http-auth` jail.
+  - PHP runs as its own user, not as nginx's `www-data`, because that user can write the mail database.
+  - App-Specific Passwords are refused from loopback, i.e. in the webmail: Roundcube accepts the session password as the current password when changing the main password, and an app password must not be enough for that.
+- **Radicale** for CalDAV/CardDAV on its own host name (`dav.<domain>`), authenticating against Dovecot over a local socket with a small plugin of its own (`sovereign_radicale_auth`): both Radicale's built-in type and `python3-radicale-dovecot-auth` share one Dovecot auth penalty among all users, so a single wrong password could lock everybody out. Main and App-Specific Passwords work. Shared calendars and address books (`radicale_shared_collections`) are created by Ansible, and the rights file follows the variables exactly; removing an entry revokes access and keeps the data.
+- Web logins reach Dovecot from loopback, out of reach of its jail: Roundcube and Radicale have fail2ban jails of their own.
 
-**Tests:** Roundcube login page served via HTTPS; ManageSieve (4190) accepts STARTTLS and authentication; authenticated CalDAV/CardDAV PROPFIND succeeds, unauthenticated fails; a shared calendar defined in group_vars is accessible to the intended users only.
+**Tests:** nothing reachable without basic auth; Roundcube login page and its assets served via HTTPS, internal files not; app password refused in the webmail; sending through the webmail; filter settings reach ManageSieve; ManageSieve (4190) accepts STARTTLS and authentication; authenticated CalDAV/CardDAV PROPFIND succeeds, unauthenticated fails; a shared calendar defined in group_vars is accessible to the intended users only; repeated failed logins are banned in all three jails; a wrong password does not delay other users' CalDAV logins; parallel CalDAV logins work.
 
 ### 2.7 Backups (Restic)
 
@@ -159,7 +163,8 @@ Implementation order: 2.1, 2.2, the certificate part of 2.5, 2.3, 2.4, rest of 2
 
 - The `maildb` role (written in Phase 2.3) acts strictly on `group_vars/mailservers.yml`: `mail_domains`, `mail_mailboxes` (with `app_passwords`) and `mail_aliases`.
 - Domains, mailboxes, App-Specific Passwords and aliases **precisely mirror** the code state, including removal of entries no longer defined; manual changes in the database are reverted on the next run.
-- **Password self-service:** users change their own main password in Roundcube (password plugin). Ansible sets the initial password hash when it creates a mailbox and does not touch it afterwards; everything else (domains, mailboxes, aliases, App-Specific Passwords) stays exactly mirrored. Roundcube therefore gets write access to the mail database (only it and Ansible write); App-Specific Passwords remain admin-managed via `group_vars`.
+- **Password self-service:** users change their own main password in Roundcube (password plugin). Ansible sets the initial password hash when it creates a mailbox and does not touch it afterwards; everything else (domains, mailboxes, aliases, App-Specific Passwords) stays exactly mirrored. Roundcube therefore gets write access to the mail database (only it and Ansible write); App-Specific Passwords remain admin-managed via `group_vars`. An admin resets a forgotten password by updating the hash in the database on the server.
+- The database has its own directory, owned by Roundcube's PHP user, for the rollback journal; root's scripts stay in a directory only root can write. A small password driver opens the database with plain PDO, because Roundcube's database layer switches SQLite databases to WAL on connect.
 
 **Tests:** adding, changing and removing users, aliases and App-Specific Passwords in the variables is reflected in the database; a password changed by the user survives the next Ansible run; a second run reports no changes; a removed user can no longer log in.
 
@@ -231,7 +236,7 @@ Rewrite the README and Wiki to reflect the modernized, bare-metal deployment str
 | Exporter access | Source-restricted nftables rule driven by `monitoring_sources` |
 | Migration | No automated path; manual migration guide in Phase 5 |
 | CI provider | GitHub Actions, Ubuntu runners with incus |
-| Mail database | SQLite instead of PostgreSQL; Ansible the only writer, readers read-only, rollback journal |
+| Mail database | SQLite instead of PostgreSQL; writers Ansible and Roundcube (passwords), readers read-only, rollback journal |
 | Roundcube database | own SQLite file |
 | App-Specific Passwords | 8-character id prefix + secret, selected by prefix (Dovecot 2.4: one row per passdb lookup) |
 | Password hashes | Argon2id only |
@@ -246,3 +251,6 @@ Rewrite the README and Wiki to reflect the modernized, bare-metal deployment str
 | Postfix master.cf | Debian's own, submission added via `postconf` |
 | Implementation order | certificate part of 2.5 before 2.3 |
 | Password self-service | users change their main password in Roundcube; Ansible sets only the initial hash; App-Specific Passwords stay admin-managed |
+| Webmail exposure | Roundcube is not trusted: mandatory HTTP basic auth in front of it; users in general are trusted, so Roundcube keeps direct write access to the mail database |
+| Basic auth hashes | SHA-512 crypt only: nginx verifies on every request in its event loop, slow hashes would stall it |
+| Radicale authentication | own small plugin instead of the built-in `dovecot` type or `python3-radicale-dovecot-auth`: `no-penalty`, one connection id per thread, correct Dovecot 2.4 handshake |

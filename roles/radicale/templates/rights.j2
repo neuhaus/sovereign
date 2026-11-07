@@ -1,0 +1,34 @@
+# {{ ansible_managed }}
+#
+# First match wins. R/W: the collection tree; r/w: calendars and address books
+# with their entries.
+
+[root]
+user: .+
+collection:
+permissions: R
+
+[principal]
+user: .+
+collection: {user}
+permissions: RW
+
+[own-collections]
+user: .+
+collection: {user}/[^/]+
+permissions: rw
+{% if radicale_shared_collections %}
+
+# Lets members list /shared/ when they set up a shared collection.
+[shared]
+user: {{ radicale_shared_collections | map(attribute='users') | flatten | unique | sort | map('regex_escape') | join('|') }}
+collection: shared
+permissions: R
+{% for collection in radicale_shared_collections | sort(attribute='name') %}
+
+[shared-{{ collection.name }}]
+user: {{ collection.users | sort | map('regex_escape') | join('|') }}
+collection: shared/{{ collection.name }}
+permissions: rw
+{% endfor %}
+{% endif %}

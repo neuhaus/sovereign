@@ -29,6 +29,15 @@
     mode: "0644"
   notify: Fail2ban configuration changed
 
+- name: Install the Radicale filter
+  ansible.builtin.copy:
+    src: radicale.conf
+    dest: /etc/fail2ban/filter.d/radicale.conf
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Fail2ban configuration changed
+
 - name: Enable fail2ban
   ansible.builtin.systemd_service:
     name: fail2ban

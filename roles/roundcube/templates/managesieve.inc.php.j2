@@ -1,0 +1,6 @@
+<?php
+// {{ ansible_managed }}
+$config = [];
+// Over loopback, where Dovecot does not require TLS.
+$config['managesieve_host'] = '127.0.0.1:4190';
+$config['managesieve_usetls'] = false;

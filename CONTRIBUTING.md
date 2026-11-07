@@ -59,7 +59,7 @@ A module must be idempotent. If it's run once or many times, the result should b
 
 ### Databases
 
-Sovereign runs no database server. Services that need a database use SQLite, as long as the data and write load stay within SQLite's design limits (the mail database has a single writer, Ansible). Give each service its own database file. Readers that should not write (Postfix, Dovecot) open SQLite databases read-only. Use the rollback journal (`journal_mode = DELETE`) unless every reader may write: in WAL mode even readers must write the `-shm` file, and a reader without that right fails with "attempt to write a readonly database". With a single, rare writer WAL brings no benefit anyway.
+Sovereign runs no database server. Services that need a database use SQLite, as long as the data and write load stay within SQLite's design limits (the mail database has a single writer, Ansible). Give each service its own database file (the mail database is written by Ansible and, for password changes only, by Roundcube). Readers that should not write (Postfix, Dovecot) open SQLite databases read-only. Use the rollback journal (`journal_mode = DELETE`) unless every reader may write: in WAL mode even readers must write the `-shm` file, and a reader without that right fails with "attempt to write a readonly database". With rare writes WAL brings no benefit anyway. Roundcube's database layer switches every SQLite database it opens to WAL, so it must never open the mail database; its password driver uses plain PDO.
 
 ### Registrations
 
@@ -95,6 +95,7 @@ Consider the following checklist when reviewing a module's design.
 - Does the role create data on the server that is impossible or difficult to reproduce, e.g., private keys? If so, make sure it is included in backups.
 - Does the role need a certificate for a new host name? If so, add it to `certbot_domains`; the certbot role reissues the certificate with the same key.
 - Does the role add an nginx site? If so, it includes `/etc/nginx/snippets/sovereign-tls.conf` for HTTPS, its host names are in `certbot_domains`, it notifies `Nginx configuration changed` (handled by the nginx role, do not redefine it), and somebody knowledgeable in nginx configuration and security has reviewed it.
+- Can the role's service write to a directory containing something root executes? SQLite writers need write access to the database's directory, so keep that directory separate.
 - Does the role open a port? If so, update the nftables role and the firewall tests.
 - Does README.md need to be updated based on new or changed finalization instructions?
 

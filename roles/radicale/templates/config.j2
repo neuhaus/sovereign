@@ -1,0 +1,21 @@
+# {{ ansible_managed }}
+[server]
+hosts = 127.0.0.1:{{ radicale_port }}
+
+[auth]
+type = sovereign_radicale_auth
+dovecot_socket = /run/dovecot/{{ radicale_dovecot_socket }}
+lc_username = True
+
+[rights]
+type = from_file
+file = /etc/radicale/rights
+
+[storage]
+filesystem_folder = {{ radicale_storage_dir }}
+
+[web]
+type = none
+
+[logging]
+level = info

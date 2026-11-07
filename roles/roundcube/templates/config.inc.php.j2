@@ -1,0 +1,31 @@
+<?php
+// {{ ansible_managed }}
+$config = [];
+include("/etc/roundcube/debian-db-roundcube.php");
+include("/etc/roundcube/des-key.inc.php");
+
+// Dovecot and Postfix on this host. IMAP over loopback needs no TLS; Postfix
+// requires it on the submission port, so it is verified by name.
+$config['imap_host'] = '127.0.0.1:143';
+$config['smtp_host'] = 'tls://127.0.0.1:587';
+$config['smtp_user'] = '%u';
+$config['smtp_pass'] = '%p';
+$config['smtp_conn_options'] = [
+    'ssl' => ['peer_name' => '{{ certbot_domains[0] }}', 'verify_peer' => true, 'verify_peer_name' => true],
+];
+
+$config['plugins'] = {{ roundcube_plugins | to_json }};
+$config['skin'] = 'elastic';
+$config['product_name'] = 'Webmail';
+$config['support_url'] = '';
+// No version number in outgoing mail.
+$config['useragent'] = 'Roundcube Webmail';
+$config['enable_spellcheck'] = false;
+$config['enable_installer'] = false;
+
+$config['temp_dir'] = '{{ roundcube_temp_dir }}';
+// journald; the fail2ban jail reads failed logins from there.
+$config['log_driver'] = 'syslog';
+$config['syslog_id'] = 'roundcube';
+$config['use_https'] = true;
+$config['session_samesite'] = 'Lax';

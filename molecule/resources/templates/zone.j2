@@ -17,6 +17,7 @@ pebble          IN A    {{ sovtest_ips.pebble }}
 mta-sts         IN CNAME mail
 autoconfig      IN CNAME mail
 autodiscover    IN CNAME mail
+dav             IN CNAME mail
 @               IN TXT  "v=spf1 mx -all"
 _dmarc          IN TXT  "v=DMARC1; p=reject; rua=mailto:postmaster@{{ sovtest_domain }}"
 _mta-sts        IN TXT  "v=STSv1; id=2026110401"

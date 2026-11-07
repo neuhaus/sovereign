@@ -1,0 +1,101 @@
+---
+- name: Assert that the certificate covers the Radicale host
+  ansible.builtin.assert:
+    that:
+      - radicale_host in certbot_domains
+    fail_msg: "Add {{ radicale_host }} to certbot_domains."
+    quiet: true
+
+- name: Assert valid shared collections
+  ansible.builtin.assert:
+    that:
+      - item.name is match('^[a-z0-9-]+$')
+      - item.type in ['calendar', 'addressbook']
+      - item.users | length > 0
+    fail_msg: "Invalid entry in radicale_shared_collections: {{ item.name | default('?') }}"
+    quiet: true
+  loop: "{{ radicale_shared_collections }}"
+  loop_control:
+    label: "{{ item.name | default('?') }}"
+
+- name: Install radicale
+  ansible.builtin.apt:
+    name: radicale
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+
+# Debian 13 ships this directory owned by root.
+- name: Create the storage directory
+  ansible.builtin.file:
+    path: "{{ radicale_storage_dir }}"
+    state: directory
+    owner: "{{ radicale_user }}"
+    group: "{{ radicale_user }}"
+    mode: "0750"
+
+- name: Install the authentication plugin
+  ansible.builtin.copy:
+    src: sovereign_radicale_auth.py
+    dest: /usr/lib/python3/dist-packages/sovereign_radicale_auth.py
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Radicale configuration changed
+
+- name: Configure radicale
+  ansible.builtin.template:
+    src: "{{ item }}.j2"
+    dest: "/etc/radicale/{{ item }}"
+    owner: root
+    group: root
+    mode: "0644"
+  loop:
+    - config
+    - rights
+  notify: Radicale configuration changed
+
+- name: Create the shared collection directories
+  ansible.builtin.file:
+    path: "{{ radicale_storage_dir }}/collection-root/{{ item }}"
+    state: directory
+    owner: "{{ radicale_user }}"
+    group: "{{ radicale_user }}"
+    mode: "0750"
+  loop: "{{ ['shared'] + radicale_shared_collections | map(attribute='name') | map('regex_replace', '^', 'shared/') | list }}"
+  when: radicale_shared_collections | length > 0
+
+# Only when created: users may rename a collection in their client.
+- name: Create the shared collections
+  ansible.builtin.copy:
+    dest: "{{ radicale_storage_dir }}/collection-root/shared/{{ item.name }}/.Radicale.props"
+    content: "{{ {'tag': 'VCALENDAR' if item.type == 'calendar' else 'VADDRESSBOOK', 'D:displayname': item.display_name | default(item.name)} | to_json }}\n"
+    force: false
+    owner: "{{ radicale_user }}"
+    group: "{{ radicale_user }}"
+    mode: "0640"
+  loop: "{{ radicale_shared_collections }}"
+  loop_control:
+    label: "{{ item.name }}"
+
+- name: Configure the Radicale site
+  ansible.builtin.template:
+    src: nginx-radicale.conf.j2
+    dest: /etc/nginx/sites-available/sovereign-radicale.conf
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Nginx configuration changed
+
+- name: Enable the Radicale site
+  ansible.builtin.file:
+    src: /etc/nginx/sites-available/sovereign-radicale.conf
+    dest: /etc/nginx/sites-enabled/sovereign-radicale.conf
+    state: link
+  notify: Nginx configuration changed
+
+- name: Enable radicale
+  ansible.builtin.systemd_service:
+    name: radicale
+    state: started
+    enabled: true

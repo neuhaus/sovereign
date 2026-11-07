@@ -1,0 +1,10 @@
+# {{ ansible_managed }}
+[Unit]
+Description=Roundcube maintenance: expired sessions, caches, temp files, deleted records
+
+[Service]
+Type=oneshot
+User={{ roundcube_user }}
+Group={{ roundcube_group }}
+ExecStart=/usr/share/roundcube/bin/gc.sh
+ExecStart=/usr/share/roundcube/bin/cleandb.sh

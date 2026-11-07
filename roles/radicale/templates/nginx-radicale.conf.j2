@@ -1,0 +1,18 @@
+# {{ ansible_managed }}
+# CalDAV/CardDAV (Radicale).
+server {
+    listen 443 ssl;
+    listen [::]:443 ssl;
+    http2 on;
+    server_name {{ radicale_host }};
+    include /etc/nginx/snippets/sovereign-tls.conf;
+    client_max_body_size {{ radicale_max_body_size }};
+
+    location / {
+        proxy_pass http://127.0.0.1:{{ radicale_port }};
+        proxy_set_header Host $host;
+        # Overwritten, not appended: fail2ban trusts this address.
+        proxy_set_header X-Forwarded-For $remote_addr;
+        proxy_set_header X-Forwarded-Proto https;
+    }
+}

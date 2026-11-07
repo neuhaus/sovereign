@@ -1,0 +1,16 @@
+; {{ ansible_managed }}
+[roundcube]
+user = {{ roundcube_user }}
+group = {{ roundcube_group }}
+listen = /run/php/roundcube.sock
+listen.owner = www-data
+listen.group = www-data
+listen.mode = 0660
+pm = ondemand
+pm.max_children = {{ roundcube_php_max_children }}
+pm.process_idle_timeout = 60s
+security.limit_extensions = .php
+php_admin_flag[expose_php] = off
+php_admin_value[memory_limit] = {{ roundcube_php_memory_limit }}
+php_admin_value[upload_max_filesize] = {{ roundcube_upload_max_size }}
+php_admin_value[post_max_size] = {{ roundcube_post_max_size }}

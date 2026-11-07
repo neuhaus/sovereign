@@ -6,8 +6,8 @@
 > DNSSEC resolver, nftables firewall, fail2ban, unattended-upgrades, systemd
 > timers, node exporter), the TLS certificate (nginx, certbot) and the mail
 > stack (SQLite mail database, Postfix, Dovecot 2.4, Rspamd, postsrsd,
-> MTA-STS, client autoconfiguration). Webmail, CalDAV/CardDAV and backups are
-> still missing. Do not use this branch in production yet. The rest of this
+> MTA-STS, client autoconfiguration, Roundcube webmail, Radicale
+> CalDAV/CardDAV). Backups are still missing. Do not use this branch in production yet. The rest of this
 > README describes the old setup and will be rewritten; see
 > [docs/STATUS.md](docs/STATUS.md) and [docs/PLAN.md](docs/PLAN.md).
 

@@ -1,13 +1,17 @@
 ---
-# The mail database mirrors these inventory variables exactly: entries that
-# are no longer listed are removed. Set them in group_vars/mailservers.yml.
+# The mail database mirrors these inventory variables exactly, except for
+# existing mailbox passwords: entries that are no longer listed are removed.
+# Set them in group_vars/mailservers.yml.
 #
 #   mail_domains:
 #     - example.org
 #
 #   mail_mailboxes:
 #     - address: alice@example.org
-#       # doveadm pw -s ARGON2ID (Argon2id hashes only)
+#       # doveadm pw -s ARGON2ID (Argon2id hashes only). Initial password: set
+#       # when the mailbox is created and not touched afterwards, because users
+#       # change their password in Roundcube. To reset a forgotten password,
+#       # update the hash in the database on the server.
 #       password: "{ARGON2ID}$argon2id$v=19$m=65536,t=3,p=1$..."
 #       quota_mb: 0          # optional, 0 = unlimited
 #       enabled: true        # optional; disabled mailboxes cannot log in
@@ -26,8 +30,18 @@ maildb_domains: "{{ mail_domains | default([]) }}"
 maildb_mailboxes: "{{ mail_mailboxes | default([]) }}"
 maildb_aliases: "{{ mail_aliases | default([]) }}"
 
+# Scripts run by root (sync.sql, schema.sql). Nobody else may write here.
 maildb_dir: /var/lib/sovereign
-maildb_path: "{{ maildb_dir }}/mail.sqlite"
+# The database has its own directory because SQLite creates the rollback
+# journal next to it, so the writer needs write access to that directory.
+maildb_db_dir: "{{ maildb_dir }}/maildb"
+maildb_path: "{{ maildb_db_dir }}/mail.sqlite"
 
 # Group that may read the database (dovecot and postfix are added to it).
 maildb_group: maildb
+
+# The only user besides root that may write the database: Roundcube's PHP
+# processes, for password changes. Not www-data, which nginx also runs as; the
+# primary group gives it access to the files of Debian's Roundcube package.
+maildb_writer: roundcube
+maildb_writer_group: www-data

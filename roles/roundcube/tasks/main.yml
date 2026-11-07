@@ -1,0 +1,154 @@
+---
+- name: Assert valid basic auth users
+  ansible.builtin.assert:
+    that:
+      - roundcube_basic_auth_users | length > 0
+      - (roundcube_basic_auth_users | map(attribute='name') | select('match', '^[A-Za-z0-9._@-]+$') | list | length)
+        == (roundcube_basic_auth_users | length)
+      - (roundcube_basic_auth_users | map(attribute='password') | select('match', '^[$]6[$]') | list | length)
+        == (roundcube_basic_auth_users | length)
+    fail_msg: >-
+      Set roundcube_basic_auth_users: at least one entry, each with a valid name
+      and a SHA-512 crypt hash (openssl passwd -6).
+    quiet: true
+  no_log: true
+
+# roundcube-core alone: the "roundcube" package and recommends would add other
+# web servers. php-fpm comes first because apt otherwise satisfies PHP's
+# dependency on a server API with Apache's module. Debian's dbconfig-common
+# creates the SQLite database and upgrades its schema with the package.
+- name: Install roundcube
+  ansible.builtin.apt:
+    name:
+      - php-fpm
+      - roundcube-core
+      - roundcube-sqlite3
+      - roundcube-plugins
+    state: present
+    install_recommends: false
+    update_cache: true
+    cache_valid_time: 3600
+
+- name: Read the PHP version
+  ansible.builtin.command:
+    argv: [php, -r, echo PHP_MAJOR_VERSION . "." . PHP_MINOR_VERSION;]
+  register: roundcube_php_version
+  changed_when: false
+
+- name: Create the temp directory
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: directory
+    owner: "{{ item.owner }}"
+    group: "{{ roundcube_group }}"
+    mode: "{{ item.mode }}"
+  loop:
+    - {path: "{{ roundcube_temp_dir | dirname }}", owner: root, mode: "0750"}
+    - {path: "{{ roundcube_temp_dir }}", owner: "{{ roundcube_user }}", mode: "0700"}
+  loop_control:
+    label: "{{ item.path }}"
+
+# Encrypts the IMAP password in the session. Generated once, must be 24 bytes.
+- name: Generate the session encryption key
+  ansible.builtin.shell:
+    cmd: >-
+      set -o pipefail;
+      umask 027;
+      printf "<?php\n\$config['des_key'] = '%s';\n" "$(openssl rand -base64 18)" > des-key.inc.php.new
+      && chgrp {{ roundcube_group }} des-key.inc.php.new
+      && mv des-key.inc.php.new des-key.inc.php
+    chdir: /etc/roundcube
+    creates: /etc/roundcube/des-key.inc.php
+    executable: /bin/bash
+
+- name: Configure roundcube
+  ansible.builtin.template:
+    src: "{{ item.src }}"
+    dest: "/etc/roundcube/{{ item.dest }}"
+    owner: root
+    group: "{{ roundcube_group }}"
+    mode: "0640"
+    validate: php -l %s
+  loop:
+    - {src: config.inc.php.j2, dest: config.inc.php}
+    - {src: password.inc.php.j2, dest: plugins/password/config.inc.php}
+    - {src: managesieve.inc.php.j2, dest: plugins/managesieve/config.inc.php}
+  loop_control:
+    label: "{{ item.dest }}"
+
+# Roundcube's own sql driver would switch the mail database to WAL on connect
+# (see the template); after that Postfix and Dovecot could no longer read it.
+- name: Install the password driver
+  ansible.builtin.template:
+    src: password-driver.php.j2
+    dest: /usr/share/roundcube/plugins/password/drivers/sovereign.php
+    owner: root
+    group: root
+    mode: "0644"
+    validate: php -l %s
+
+- name: Remove the default PHP-FPM pool
+  ansible.builtin.file:
+    path: "/etc/php/{{ roundcube_php_version.stdout }}/fpm/pool.d/www.conf"
+    state: absent
+  notify: PHP-FPM configuration changed
+
+- name: Configure the PHP-FPM pool
+  ansible.builtin.template:
+    src: php-fpm-pool.conf.j2
+    dest: "/etc/php/{{ roundcube_php_version.stdout }}/fpm/pool.d/roundcube.conf"
+    owner: root
+    group: root
+    mode: "0644"
+  notify: PHP-FPM configuration changed
+
+- name: Enable PHP-FPM
+  ansible.builtin.systemd_service:
+    name: "php{{ roundcube_php_version.stdout }}-fpm"
+    state: started
+    enabled: true
+
+# Debian's cron job does nothing under systemd.
+- name: Install the maintenance job
+  ansible.builtin.template:
+    src: "{{ item }}.j2"
+    dest: "/etc/systemd/system/{{ item }}"
+    owner: root
+    group: root
+    mode: "0644"
+  loop:
+    - roundcube-maintenance.service
+    - roundcube-maintenance.timer
+
+- name: Enable the maintenance timer
+  ansible.builtin.systemd_service:
+    name: roundcube-maintenance.timer
+    state: started
+    enabled: true
+    daemon_reload: true
+
+# nginx reads this file on every request; no reload needed.
+- name: Install the basic auth users
+  ansible.builtin.template:
+    src: htpasswd.j2
+    dest: /etc/nginx/roundcube.htpasswd
+    owner: root
+    group: www-data
+    mode: "0640"
+  no_log: true
+
+- name: Configure the webmail site
+  ansible.builtin.template:
+    src: nginx-roundcube.conf.j2
+    dest: /etc/nginx/sites-available/sovereign-roundcube.conf
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Nginx configuration changed
+
+- name: Enable the webmail site
+  ansible.builtin.file:
+    src: /etc/nginx/sites-available/sovereign-roundcube.conf
+    dest: /etc/nginx/sites-enabled/sovereign-roundcube.conf
+    state: link
+  notify: Nginx configuration changed

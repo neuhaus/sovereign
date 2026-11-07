@@ -1,0 +1,11 @@
+# {{ ansible_managed }}
+[Unit]
+Description=Hourly Roundcube maintenance
+
+[Timer]
+OnCalendar=hourly
+RandomizedDelaySec=10m
+Persistent=true
+
+[Install]
+WantedBy=timers.target

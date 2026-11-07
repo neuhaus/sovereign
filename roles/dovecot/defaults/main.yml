@@ -19,8 +19,13 @@ dovecot_vmail_user: vmail
 dovecot_vmail_dir: /var/vmail
 
 # Mail database (maildb role).
-dovecot_maildb_path: "{{ maildb_path | default('/var/lib/sovereign/mail.sqlite') }}"
+dovecot_maildb_path: "{{ maildb_path | default('/var/lib/sovereign/maildb/mail.sqlite') }}"
 dovecot_maildb_group: "{{ maildb_group | default('maildb') }}"
+
+# Authentication socket for Radicale (radicale role, which must run first:
+# Dovecot refuses to start if the socket's owner does not exist).
+dovecot_radicale_socket: "{{ radicale_dovecot_socket | default('') }}"
+dovecot_radicale_user: "{{ radicale_user | default('radicale') }}"
 
 # At-rest encryption (mail_crypt) with one global EC key pair. BACK UP the
 # private key: without it the mail cannot be read.

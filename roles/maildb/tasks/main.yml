@@ -69,6 +69,25 @@
     group: "{{ maildb_group }}"
     mode: "0750"
 
+- name: Create the mail database writer
+  ansible.builtin.user:
+    name: "{{ maildb_writer }}"
+    system: true
+    group: "{{ maildb_writer_group }}"
+    groups: "{{ maildb_group }}"
+    append: true
+    home: /nonexistent
+    create_home: false
+    shell: /usr/sbin/nologin
+
+- name: Create the database directory
+  ansible.builtin.file:
+    path: "{{ maildb_db_dir }}"
+    state: directory
+    owner: "{{ maildb_writer }}"
+    group: "{{ maildb_group }}"
+    mode: "0750"
+
 - name: Install the schema and export queries
   ansible.builtin.copy:
     src: "{{ item }}"
@@ -95,7 +114,7 @@
 - name: Set mail database permissions
   ansible.builtin.file:
     path: "{{ maildb_path }}"
-    owner: root
+    owner: "{{ maildb_writer }}"
     group: "{{ maildb_group }}"
     mode: "0640"
 
@@ -118,6 +137,6 @@
 
 - name: Synchronise the mail database with the inventory
   ansible.builtin.command:
-    argv: [sqlite3, -bail, "{{ maildb_path }}", ".read {{ maildb_dir }}/sync.sql"]
+    argv: [sqlite3, -bail, -cmd, ".timeout 10000", "{{ maildb_path }}", ".read {{ maildb_dir }}/sync.sql"]
   when: maildb_current.stdout | trim != lookup('ansible.builtin.template', 'export.txt.j2') | trim
   changed_when: true

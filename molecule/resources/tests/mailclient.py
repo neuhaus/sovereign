@@ -8,16 +8,20 @@ Usage: python3 mailclient.py <command> [args...]
 """
 
 import base64
+import concurrent.futures
 import email
 import email.policy
 import email.utils
+import http.client
 import imaplib
 import io
 import json
+import re
 import smtplib
 import socket
 import ssl
 import sys
+import urllib.parse
 import zipfile
 from email.message import EmailMessage
 
@@ -212,6 +216,187 @@ def cmd_sieve(host):
     out(starttls=b'"STARTTLS"' in greeting, greeting=greeting.decode(errors="replace")[:300])
 
 
+def cmd_sieve_login(host, user, password):
+    """ManageSieve: STARTTLS, then PLAIN authentication."""
+
+    def read_response(f):
+        while True:
+            line = f.readline()
+            if not line or line.startswith((b"OK", b"NO", b"BYE")):
+                return line.decode(errors="replace").strip()
+
+    with socket.create_connection((host, 4190), timeout=15) as raw:
+        f = raw.makefile("rwb")
+        read_response(f)
+        f.write(b"STARTTLS\r\n")
+        f.flush()
+        starttls = read_response(f)
+        with ctx().wrap_socket(raw) as s:
+            f = s.makefile("rwb")
+            read_response(f)  # capabilities again after STARTTLS
+            token = base64.b64encode(f"\0{user}\0{password}".encode()).decode()
+            f.write(f'AUTHENTICATE "PLAIN" "{token}"\r\n'.encode())
+            f.flush()
+            auth = read_response(f)
+    out(starttls=starttls, auth=auth, ok=auth.startswith("OK"))
+
+
+def basic_auth(user, password):
+    return "Basic " + base64.b64encode(f"{user}:{password}".encode()).decode()
+
+
+# Basic auth in front of the webmail (roundcube_basic_auth_users in Molecule).
+WEBMAIL_AUTH = basic_auth("webmail", "sovtest-webmail-pass")
+
+
+class Web:
+    """Minimal browser for one HTTPS virtual host: keeps cookies, no redirects."""
+
+    def __init__(self, ip, vhost):
+        self.ip, self.vhost, self.cookies, self.token = ip, vhost, {}, None
+
+    def request(self, method, path, fields=None, headers=None):
+        conn = http.client.HTTPSConnection(self.ip, 443, context=ctx(), timeout=60)
+        all_headers = {"Host": self.vhost, "Authorization": WEBMAIL_AUTH, **(headers or {})}
+        if self.cookies:
+            all_headers["Cookie"] = "; ".join(f"{k}={v}" for k, v in self.cookies.items())
+        body = None
+        if fields is not None:
+            body = urllib.parse.urlencode(fields)
+            all_headers["Content-Type"] = "application/x-www-form-urlencoded"
+        conn.request(method, path, body, all_headers)
+        resp = conn.getresponse()
+        text = resp.read().decode(errors="replace")
+        for name, value in resp.getheaders():
+            if name.lower() == "set-cookie":
+                key, _, val = value.split(";", 1)[0].partition("=")
+                self.cookies[key] = val
+        conn.close()
+        match = re.search(r'"request_token":"([^"]+)"', text) or re.search(r'name="_token" value="([^"]+)"', text)
+        if match:
+            self.token = match.group(1)
+        return resp, text
+
+    def login(self, user, password):
+        """Roundcube login; True when it redirects into the mailbox."""
+        self.request("GET", "/")
+        resp, _ = self.request(
+            "POST",
+            "/?_task=login",
+            {"_token": self.token, "_task": "login", "_action": "login", "_timezone": "UTC", "_url": "", "_user": user, "_pass": password},
+        )
+        if resp.status != 302:
+            return False
+        self.request("GET", resp.getheader("Location"))
+        return True
+
+
+def cmd_web_login(ip, vhost, user, password):
+    out(ok=Web(ip, vhost).login(user, password))
+
+
+def cmd_web_basic(ip, vhost, path, user="", password=""):
+    """Request without or with other basic auth credentials; prints the status."""
+    conn = http.client.HTTPSConnection(ip, 443, context=ctx(), timeout=30)
+    headers = {"Host": vhost}
+    if user:
+        headers["Authorization"] = basic_auth(user, password)
+    conn.request("GET", path, headers=headers)
+    resp = conn.getresponse()
+    body = resp.read().decode(errors="replace")
+    out(status=resp.status, roundcube="rcmail" in body or "roundcube" in body.lower())
+
+
+def cmd_web_assets(ip, vhost):
+    """Fetch the login page and everything static it references."""
+    web = Web(ip, vhost)
+    resp, page = web.request("GET", "/")
+    links = sorted(set(re.findall(r'(?:src|href)="(\.?/?(?:skins|plugins|program)/[^"?]+)', page)))
+    failed = {}
+    for link in links:
+        status = web.request("GET", "/" + link.lstrip("./"))[0].status
+        if status != 200:
+            failed[link] = status
+    out(status=resp.status, elastic="skins/elastic" in page, assets=len(links), failed=failed)
+
+
+def cmd_web_password(ip, vhost, user, current, new):
+    web = Web(ip, vhost)
+    if not web.login(user, current):
+        out(ok=False, stage="login")
+        return
+    web.request("GET", "/?_task=settings&_action=plugin.password")
+    _, page = web.request(
+        "POST",
+        "/?_task=settings&_action=plugin.password-save",
+        {"_token": web.token, "_curpasswd": current, "_newpasswd": new, "_confpasswd": new},
+    )
+    match = re.search(r'display_message\("([^"]*)","(\w+)"', page)
+    message = match.groups() if match else (None, None)
+    out(ok=message[1] == "confirmation", message=message[0], kind=message[1])
+
+
+def cmd_web_send(ip, vhost, user, password, to, subject):
+    """Send a mail through the compose form, as the browser would."""
+    web = Web(ip, vhost)
+    if not web.login(user, password):
+        out(ok=False, stage="login")
+        return
+    resp, page = web.request("GET", "/?_task=mail&_action=compose")
+    if resp.status == 302:
+        resp, page = web.request("GET", resp.getheader("Location"))
+    compose_id = re.search(r'"compose_id":"([^"]+)"', page).group(1)
+    identity = re.search(r'<select name="_from"[^>]*>\s*<option value="(\d+)"', page).group(1)
+    _, result = web.request(
+        "POST",
+        "/?_task=mail&_action=send",
+        {"_token": web.token, "_task": "mail", "_action": "send", "_id": compose_id, "_attachments": "", "_from": identity,
+         "_to": to, "_cc": "", "_bcc": "", "_replyto": "", "_followupto": "", "_subject": subject, "_draft": "",
+         "_store_target": "Sent", "_is_html": "0", "_framed": "1", "_message": "Sent through the webmail\n"},
+    )
+    errors = re.findall(r'display_message\("([^"]*)","error"', result)
+    out(ok="sent_successfully" in result, errors=errors, response=result[-300:] if "sent_successfully" not in result else "")
+
+
+def cmd_web_sieve(ip, vhost, user, password):
+    """Open the filter settings; Roundcube talks to ManageSieve for them."""
+    web = Web(ip, vhost)
+    if not web.login(user, password):
+        out(ok=False, stage="login")
+        return
+    resp, page = web.request("GET", "/?_task=settings&_action=plugin.managesieve")
+    errors = re.findall(r'display_message\("([^"]*)","error"', page)
+    out(ok=resp.status == 200 and "filtersetslist" in page and not errors, status=resp.status, errors=errors)
+
+
+PROPFIND = '<?xml version="1.0"?><propfind xmlns="DAV:"><prop><displayname/><resourcetype/></prop></propfind>'
+
+
+def cmd_dav(ip, vhost, method, path, user="", password="", body=""):
+    """One WebDAV request; prints status and response body."""
+    conn = http.client.HTTPSConnection(ip, 443, context=ctx(), timeout=30)
+    headers = {"Host": vhost, "Depth": "0", "Content-Type": "text/calendar" if method == "PUT" else "application/xml"}
+    if user:
+        headers["Authorization"] = basic_auth(user, password)
+    conn.request(method, path, body or (PROPFIND if method == "PROPFIND" else None), headers)
+    resp = conn.getresponse()
+    text = resp.read().decode(errors="replace")
+    out(status=resp.status, location=resp.getheader("Location"), body=text[:2000])
+
+
+def cmd_dav_parallel(ip, vhost, path, user, password, count):
+    """The same PROPFIND several times at once; prints all statuses."""
+
+    def propfind(_):
+        conn = http.client.HTTPSConnection(ip, 443, context=ctx(), timeout=60)
+        headers = {"Host": vhost, "Depth": "0", "Content-Type": "application/xml", "Authorization": basic_auth(user, password)}
+        conn.request("PROPFIND", path, PROPFIND, headers)
+        return conn.getresponse().status
+
+    with concurrent.futures.ThreadPoolExecutor(int(count)) as pool:
+        out(statuses=list(pool.map(propfind, range(int(count)))))
+
+
 def cmd_sink(port, outfile):
     """Minimal SMTP server recording envelopes as JSON lines (plays a foreign MX)."""
     srv = socket.socket()
@@ -274,6 +459,15 @@ COMMANDS = {
     "dkim-verify": cmd_dkim_verify,
     "tls": cmd_tls,
     "sieve": cmd_sieve,
+    "sieve-login": cmd_sieve_login,
+    "web-login": cmd_web_login,
+    "web-basic": cmd_web_basic,
+    "web-assets": cmd_web_assets,
+    "web-password": cmd_web_password,
+    "web-send": cmd_web_send,
+    "web-sieve": cmd_web_sieve,
+    "dav": cmd_dav,
+    "dav-parallel": cmd_dav_parallel,
     "sink": cmd_sink,
 }
 

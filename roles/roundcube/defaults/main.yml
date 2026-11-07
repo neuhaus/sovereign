@@ -1,0 +1,41 @@
+---
+# Host name of the webmail; the mail host by default, which needs no extra DNS
+# record or certificate name. Add any other name to certbot_domains.
+roundcube_host: "{{ certbot_domains[0] }}"
+
+# Runs PHP; owns the mail database so users can change their password there.
+roundcube_user: "{{ maildb_writer | default('roundcube') }}"
+roundcube_group: "{{ maildb_writer_group | default('www-data') }}"
+roundcube_maildb_path: "{{ maildb_path | default('/var/lib/sovereign/maildb/mail.sqlite') }}"
+
+# Debian's temp directory is reset to www-data on every package upgrade.
+roundcube_temp_dir: /var/lib/roundcube-sovereign/temp
+
+# HTTP basic auth in front of the whole webmail, so that nothing reaches
+# Roundcube's PHP code without it. Required: the role fails without an entry.
+#
+#   roundcube_basic_auth_users:
+#     - name: family                # letters, digits, ".", "_", "-", "@"
+#       # openssl passwd -6
+#       password: "$6$..."
+#
+# SHA-512 crypt only. nginx checks the hash in its event loop on every request,
+# including each static file; slow hashes (bcrypt, yescrypt) would stall it. Use
+# a long random password, since this hash is cheap to attack if it ever leaks.
+roundcube_basic_auth_users: []
+
+roundcube_plugins:
+  - archive
+  - managesieve
+  - password
+
+roundcube_password_minimum_length: 12
+
+# Attachments grow by about a third when encoded; with 35M uploads a mail stays
+# below Postfix's 50 MiB limit.
+roundcube_upload_max_size: 35M
+roundcube_post_max_size: 40M
+roundcube_php_memory_limit: 256M
+
+# Workers only exist while requests come in, which suits a small server.
+roundcube_php_max_children: 5

@@ -51,7 +51,8 @@ provisioner:
           - broken.test
       mailservers:
         # Test accounts. Passwords (test only): alice "sovtest-alice-pass",
-        # alice's app password "AlicPhn1-sovtest-app-phone", bob "sovtest-bob-pass".
+        # alice's app password "AlicPhn1-sovtest-app-phone", bob "sovtest-bob-pass",
+        # carol "sovtest-carol-pass", carol's app password "CarolPh1-sovtest-app-phone".
         # Molecule expands environment variables in this file, so the dollar signs
         # of the hashes are doubled.
         mail_domains:
@@ -65,6 +66,13 @@ provisioner:
                 password: "{ARGON2ID}$$argon2id$$v=19$$m=65536,t=3,p=1$$sjSnTepvTiaLdWZ96rsYPg$$RNGsSHThLFD9eEA4WzbnBnou69e+R0MuVfr43TFkbAk"
           - address: "bob@{{ sovtest_domain }}"
             password: "{ARGON2ID}$$argon2id$$v=19$$m=65536,t=3,p=1$$uuSbK3yYxUdFBwxKdgH2SQ$$btDjUirMAqWOiBTzd+2FkQS15ap9gTR/X7LwgDYTuzA"
+          # Changes her password through Roundcube in the tests.
+          - address: "carol@{{ sovtest_domain }}"
+            password: "{ARGON2ID}$$argon2id$$v=19$$m=65536,t=3,p=1$$9Z6NpQhBJoWwO25Ch1MHgA$$IfCZh4c7gQJ6ejUaB3YW8EZDJgAJqg+nBH0gBx6i0cA"
+            app_passwords:
+              - name: phone
+                id: CarolPh1
+                password: "{ARGON2ID}$$argon2id$$v=19$$m=65536,t=3,p=1$$9D4C55cAI5icv1mYllJfmQ$$1Jo+Lfj3jzGuqlg1pENa/wNuVGpm0RBvBQr2EuHZsBk"
         mail_aliases:
           - source: "postmaster@{{ sovtest_domain }}"
             destinations: ["alice@{{ sovtest_domain }}"]
@@ -96,11 +104,21 @@ provisioner:
           - "mta-sts.{{ sovtest_domain }}"
           - "autoconfig.{{ sovtest_domain }}"
           - "autodiscover.{{ sovtest_domain }}"
+          - "dav.{{ sovtest_domain }}"
         # The mail tests run their clients on dns and trigger failures on purpose
         # (wrong passwords, refused TLS versions, port probes); pebble stays
         # bannable for the fail2ban test.
         fail2ban_ignoreip:
           - "{{ sovtest_ips.dns }}"
+        # Basic auth in front of the webmail; password (test only) "sovtest-webmail-pass".
+        roundcube_basic_auth_users:
+          - name: webmail
+            password: "$$6$$kHE0JoqcRXsn/T4r$$bKOdUcacVfIlNI7G6bdJJ4m4vGSB3ffhLACU1Yl.f/w8KzNpRDekvwSH2s/aqJ70TfV3v/419LK4dzsieiyrL0"
+        radicale_shared_collections:
+          - name: family
+            type: calendar
+            display_name: Family
+            users: ["alice@{{ sovtest_domain }}", "bob@{{ sovtest_domain }}"]
         # bob's submissions test the outbound rate limit.
         rspamd_ratelimit_user_burst: 10
         rspamd_ratelimit_user_rate: "1 / 1h"

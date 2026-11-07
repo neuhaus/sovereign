@@ -1,19 +1,21 @@
 -- {{ ansible_managed }}
--- Replaces the content of the mail database with the inventory state in one
--- transaction; readers see either the old or the new state.
+-- Makes the mail database match the inventory in one transaction; readers see
+-- either the old or the new state. Existing mailboxes keep their password:
+-- the hash in the inventory is only the initial one.
 {% macro q(value) %}'{{ value | string | replace("'", "''") }}'{% endmacro %}
 PRAGMA foreign_keys = ON;
 BEGIN IMMEDIATE;
 DELETE FROM aliases;
 DELETE FROM app_passwords;
-DELETE FROM mailboxes;
-DELETE FROM domains;
+DELETE FROM mailboxes WHERE localpart || '@' || domain NOT IN ({% for mailbox in maildb_mailboxes %}{{ q(mailbox.address) }}{{ ', ' if not loop.last }}{% endfor %});
+DELETE FROM domains WHERE name NOT IN ({% for domain in maildb_domains %}{{ q(domain) }}{{ ', ' if not loop.last }}{% endfor %});
 {% for domain in maildb_domains | sort %}
-INSERT INTO domains (name) VALUES ({{ q(domain) }});
+INSERT OR IGNORE INTO domains (name) VALUES ({{ q(domain) }});
 {% endfor %}
 {% for mailbox in maildb_mailboxes | sort(attribute='address') %}
 {% set localpart, domain = mailbox.address.split('@') %}
-INSERT INTO mailboxes (localpart, domain, password, quota_mb, enabled) VALUES ({{ q(localpart) }}, {{ q(domain) }}, {{ q(mailbox.password) }}, {{ mailbox.quota_mb | default(0) | int }}, {{ 1 if mailbox.enabled | default(true) | bool else 0 }});
+INSERT INTO mailboxes (localpart, domain, password, quota_mb, enabled) VALUES ({{ q(localpart) }}, {{ q(domain) }}, {{ q(mailbox.password) }}, {{ mailbox.quota_mb | default(0) | int }}, {{ 1 if mailbox.enabled | default(true) | bool else 0 }})
+  ON CONFLICT (localpart, domain) DO UPDATE SET quota_mb = excluded.quota_mb, enabled = excluded.enabled;
 {% for app in mailbox.app_passwords | default([]) | sort(attribute='id') %}
 INSERT INTO app_passwords (localpart, domain, id, name, password) VALUES ({{ q(localpart) }}, {{ q(domain) }}, {{ q(app.id) }}, {{ q(app.name) }}, {{ q(app.password) }});
 {% endfor %}

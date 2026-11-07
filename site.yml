@@ -2,7 +2,7 @@
 # Top-level playbook: configures every host in the `mailservers` group.
 #
 # Roles are added here as they are rewritten for Debian 13 / Testing (see the
-# modernization plan). The legacy roles common, mailserver and webmail are not
+# modernization plan). The legacy roles common and mailserver are not
 # run any more; they are replaced step by step in Phase 2.
 
 - name: Configure Sovereign mail servers
@@ -20,8 +20,10 @@
     - role: mta_sts
     - role: autoconfig
     - role: rspamd
+    - role: radicale
     - role: postfix
     - role: dovecot
+    - role: roundcube
     - role: unattended_upgrades
     - role: systemd_timers
     - role: node_exporter

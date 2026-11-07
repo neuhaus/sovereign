@@ -25,7 +25,7 @@ postfix_milters:
 postfix_tls_policy_maps: socketmap:inet:127.0.0.1:8462:postfix
 
 # Mail database (maildb role).
-postfix_maildb_path: "{{ maildb_path | default('/var/lib/sovereign/mail.sqlite') }}"
+postfix_maildb_path: "{{ maildb_path | default('/var/lib/sovereign/maildb/mail.sqlite') }}"
 postfix_maildb_group: "{{ maildb_group | default('maildb') }}"
 
 # Sender Rewriting Scheme for forwarded mail (postsrsd). SRS addresses use

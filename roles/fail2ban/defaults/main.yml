@@ -20,3 +20,11 @@ fail2ban_jails:
     mode: aggressive
   # IMAP and ManageSieve authentication failures.
   dovecot: {}
+  # Basic auth in front of the webmail.
+  nginx-http-auth: {}
+  # Web logins reach Dovecot from loopback, which the dovecot jail cannot ban;
+  # these jails read the client address from Roundcube's and Radicale's logs.
+  roundcube-auth:
+    port: http,https
+  radicale:
+    port: http,https

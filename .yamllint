@@ -6,7 +6,6 @@ ignore: |
   group_vars/
   roles/common/
   roles/mailserver/
-  roles/webmail/
 
 rules:
   # Settings compatible with ansible-lint's own yamllint expectations.
