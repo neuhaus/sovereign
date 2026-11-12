@@ -23,8 +23,11 @@ dovecot_maildb_path: "{{ maildb_path | default('/var/lib/sovereign/maildb/mail.s
 dovecot_maildb_group: "{{ maildb_group | default('maildb') }}"
 
 # Mailboxes whose access the maildb role just revoked (password reset, mailbox
-# removed or disabled, app password removed): their open sessions end.
+# removed or disabled, app password removed): their open sessions end. The
+# maildb role also writes them to dovecot_kick_file, which is read too (a
+# pending kick from a run that stopped early) and removed after the kick.
 dovecot_kick_addresses: "{{ maildb_revoked_addresses | default([]) }}"
+dovecot_kick_file: "{{ maildb_revoked_file | default('/var/lib/sovereign/revoked-addresses.json') }}"
 
 # Authentication socket for local services that check logins against Dovecot,
 # /run/dovecot/<name>. Services get access by joining this group.

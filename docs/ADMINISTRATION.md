@@ -29,7 +29,7 @@ Users change their main password in the webmail, under Settings. Ansible does no
 - Give the user the temporary password and ask them to change it. Nothing enforces this.
 - If the account may be compromised, also remove its app passwords: they stay valid otherwise. Check its aliases and Sieve filters for forwarding too.
 
-**Removing or replacing an app password** also disconnects all of the mailbox's open sessions: Dovecot can't tell which password a session used.
+**Removing or replacing an app password** also disconnects all of the mailbox's open sessions: Dovecot can't tell which password a session used. Renaming an app password counts as replacing it. If a playbook run stops before it gets to the disconnect, the addresses stay in `/var/lib/sovereign/revoked-addresses.json` and the next run disconnects them.
 
 Reverting to an earlier hash counts as a new hash, so it resets the password again. That includes a `git revert` of a commit containing a reset.
 

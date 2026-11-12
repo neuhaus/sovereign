@@ -15,6 +15,7 @@ from conftest import mail_client, run_playbook
 testinfra_hosts = ["mail"]
 
 DB = "/var/lib/sovereign/maildb/mail.sqlite"
+PENDING = "/var/lib/sovereign/revoked-addresses.json"
 TESTS = pathlib.Path(__file__).parent
 
 
@@ -119,6 +120,14 @@ def test_mailbox_lifecycle_and_reset(host, peer, client, ctx, apply_roles):
         # A reset ends open sessions.
         assert session_ends(host, peer, ctx, by_user, lambda: apply_roles(hash_second))
         assert imap_ok(client, ctx, second_reset)
+        assert not host.file(PENDING).exists
+
+        # A run that stopped after the database change but before the kick
+        # leaves the address pending; the next run ends the session, although
+        # the database already matches the inventory.
+        host.check_output("printf '%%s\\n' %s > %s", json.dumps([ctx["dave"]]), PENDING)
+        assert session_ends(host, peer, ctx, second_reset, lambda: apply_roles(hash_second))
+        assert not host.file(PENDING).exists
 
         # Disabling the mailbox ends them too, and blocks logins.
         assert session_ends(host, peer, ctx, second_reset, lambda: apply_roles(hash_second, enabled=False))

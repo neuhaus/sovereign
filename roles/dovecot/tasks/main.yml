@@ -159,11 +159,25 @@
     state: started
     enabled: true
 
+- name: Read revocations still pending
+  ansible.builtin.slurp:
+    src: "{{ dovecot_kick_file }}"
+  register: dovecot_kick_pending
+  failed_when: false
+
 # Exit code 68: the user had no open session.
 - name: Disconnect users whose access was revoked
   ansible.builtin.command:
     argv: [doveadm, -c, /etc/dovecot/dovecot.conf, kick, "{{ item }}"]
-  loop: "{{ dovecot_kick_addresses }}"
+  loop: >-
+    {{ ((dovecot_kick_pending.content | b64decode | from_json) if dovecot_kick_pending.content is defined else [])
+       | union(dovecot_kick_addresses) | unique | sort }}
   register: dovecot_kick
   changed_when: dovecot_kick.rc == 0
   failed_when: dovecot_kick.rc not in [0, 68]
+
+# Only after every kick worked; a failure above stops the run and keeps it.
+- name: Forget the revocations that are done
+  ansible.builtin.file:
+    path: "{{ dovecot_kick_file }}"
+    state: absent

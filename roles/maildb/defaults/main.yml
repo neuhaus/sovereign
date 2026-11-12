@@ -38,6 +38,10 @@ maildb_dir: /var/lib/sovereign
 # journal next to it, so the writer needs write access to that directory.
 maildb_db_dir: "{{ maildb_dir }}/maildb"
 maildb_path: "{{ maildb_db_dir }}/mail.sqlite"
+# Mailboxes whose open sessions must still be ended: written before the
+# database changes, removed by the dovecot role after the kick, so a run that
+# stops in between doesn't lose them.
+maildb_revoked_file: "{{ maildb_dir }}/revoked-addresses.json"
 
 # Group that may read the database (dovecot and postfix are added to it).
 maildb_group: maildb

@@ -168,7 +168,31 @@
 # a reset password, a removed or disabled mailbox, a removed app password.
 - name: Find mailboxes whose access is being revoked
   ansible.builtin.set_fact:
-    maildb_revoked_addresses: "{{ lookup('ansible.builtin.template', 'revoked-addresses.json.j2') | from_json }}"
+    maildb_revoked_new: "{{ lookup('ansible.builtin.template', 'revoked-addresses.json.j2') | from_json }}"
+
+# Left over from a run that stopped before the dovecot role kicked them.
+- name: Read revocations still pending
+  ansible.builtin.slurp:
+    src: "{{ maildb_revoked_file }}"
+  register: maildb_revoked_pending
+  failed_when: false
+
+- name: Combine new and pending revocations
+  ansible.builtin.set_fact:
+    maildb_revoked_addresses: >-
+      {{ ((maildb_revoked_pending.content | b64decode | from_json) if maildb_revoked_pending.content is defined else [])
+         | union(maildb_revoked_new) | unique | sort }}
+
+# Before the database changes: once it matches the inventory, the comparison
+# above finds nothing any more.
+- name: Remember the mailboxes whose sessions must end
+  ansible.builtin.copy:
+    content: "{{ maildb_revoked_addresses | to_json }}\n"
+    dest: "{{ maildb_revoked_file }}"
+    owner: root
+    group: root
+    mode: "0600"
+  when: maildb_revoked_addresses | length > 0
 
 # The synchronisation script contains password hashes: root only.
 - name: Render the synchronisation script
