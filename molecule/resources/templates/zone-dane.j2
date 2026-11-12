@@ -1,10 +1,24 @@
 ; {{ ansible_managed }}
 ; Signed mail domain for the DANE tests: its MX is the SMTP sink on the dns
-; instance. dane-ok.test publishes the sink's real key, dane-bad.test a wrong one.
+; instance. dane-ok.test publishes the sink's real key, dane-bad.test a wrong
+; one. dane-mixed.test adds a second MX without TLSA; dane-unusable.test has
+; only a PKIX-EE record (usage 1), which SMTP ignores (RFC 7672).
+{% set real = sovtest_sink_tlsa.stdout %}
+{% set wrong = real[:-1] ~ ('1' if real[-1] == '0' else '0') %}
 $ORIGIN {{ item }}.
 $TTL 300
 @       IN SOA  ns.{{ sovtest_domain }}. hostmaster.{{ sovtest_domain }}. 1 3600 600 86400 300
 @       IN NS   ns.{{ sovtest_domain }}.
 @       IN MX   10 mx
 mx      IN A    {{ sovtest_ips.dns }}
-_25._tcp.mx IN TLSA 3 1 1 {{ sovtest_sink_tlsa.stdout if item == 'dane-ok.test' else sovtest_sink_tlsa.stdout[:-1] ~ ('1' if sovtest_sink_tlsa.stdout[-1] == '0' else '0') }}
+{% if item == 'dane-bad.test' %}
+_25._tcp.mx IN TLSA 3 1 1 {{ wrong }}
+{% elif item == 'dane-unusable.test' %}
+_25._tcp.mx IN TLSA 1 1 1 {{ real }}
+{% else %}
+_25._tcp.mx IN TLSA 3 1 1 {{ real }}
+{% endif %}
+{% if item == 'dane-mixed.test' %}
+@       IN MX   20 mx2
+mx2     IN A    {{ sovtest_ips.dns }}
+{% endif %}

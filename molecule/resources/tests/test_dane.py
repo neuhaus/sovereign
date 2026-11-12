@@ -95,3 +95,28 @@ def test_wrong_tlsa_record_defers_the_mail(host, dns, client, ctx, sink):
             entry = json.loads(line)
             if [r for r in entry["recipients"] if r["address"] == recipient]:
                 host.run("postsuper -d %s", entry["queue_id"])
+
+
+@pytest.mark.parametrize(
+    "domain, dane",
+    [
+        ("dane-ok.test", True),
+        # One MX without TLSA: Postfix would use unauthenticated TLS there, so the
+        # domain's MTA-STS policy (if it has one) must apply.
+        ("dane-mixed.test", False),
+        # Only a TLSA record SMTP ignores.
+        ("dane-unusable.test", False),
+        # Not signed at all.
+        ("ext.test", False),
+    ],
+)
+def test_tls_policy_skips_mta_sts_only_with_dane_for_every_mx(host, domain, dane):
+    host.run("postmap -q %s socketmap:inet:127.0.0.1:8462:postfix", domain)
+    decisions = [
+        line
+        for line in host.check_output("journalctl -u sovereign-tls-policy --no-pager --since -2min -o cat").splitlines()
+        # Lines look like "INFO <domain>: <decision>".
+        if line.split(" ", 1)[-1].startswith(domain + ":")
+    ]
+    assert decisions, "no decision logged for " + domain
+    assert ("MTA-STS not consulted" in decisions[-1]) == dane, decisions[-1]

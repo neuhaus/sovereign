@@ -56,10 +56,13 @@ provisioner:
           - signed.test
           - broken.test
         # Signed zones for the DANE tests, with a correct and a wrong TLSA record
-        # for the SMTP sink on dns.
+        # for the SMTP sink on dns; a second MX without TLSA (mixed); and only a
+        # TLSA record Postfix can't use for SMTP (unusable).
         sovtest_dane_zones:
           - dane-ok.test
           - dane-bad.test
+          - dane-mixed.test
+          - dane-unusable.test
       mailservers:
         # Test accounts. Passwords (test only): alice "sovtest-alice-pass",
         # alice's app password "AlicPhn1-sovtest-app-phone", bob "sovtest-bob-pass",
@@ -121,6 +124,10 @@ provisioner:
           - name: dane-ok.test
             addresses: ["{{ sovtest_ips.dns }}"]
           - name: dane-bad.test
+            addresses: ["{{ sovtest_ips.dns }}"]
+          - name: dane-mixed.test
+            addresses: ["{{ sovtest_ips.dns }}"]
+          - name: dane-unusable.test
             addresses: ["{{ sovtest_ips.dns }}"]
         unbound_trust_anchor_files:
           - /etc/unbound/sovtest-anchors.conf

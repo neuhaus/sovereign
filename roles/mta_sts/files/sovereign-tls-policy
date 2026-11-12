@@ -8,11 +8,15 @@ postfix-mta-sts-resolver answers every domain with an MTA-STS policy with
 RFC 8461 section 2 ("MUST NOT allow MTA-STS Policy validation to override a
 failing DANE validation"). This small socketmap sits in front of it:
 
-- if the domain's MX RRset is DNSSEC-authenticated and at least one MX host
-  has an authenticated TLSA record (_25._tcp), DANE applies: answer
+- if the domain's MX RRset is DNSSEC-authenticated and every MX host has an
+  authenticated, usable TLSA record (_25._tcp), DANE applies: answer
   NOTFOUND, so Postfix uses its default level (smtp_tls_security_level = dane);
 - otherwise forward the request to postfix-mta-sts-resolver and return its
-  answer unchanged;
+  answer unchanged. That includes mixed MX sets: Postfix's DANE level falls
+  back to unauthenticated TLS for an MX without TLSA, so where only some MX
+  hosts have TLSA records, a published MTA-STS policy protects all of them.
+  The same goes for more MX hosts than are checked, and for TLSA records
+  Postfix can't use (unknown usage, selector or matching type);
 - DNS failures and an unreachable resolver give TEMP: the mail is deferred
   instead of being delivered with weaker protection.
 
@@ -34,6 +38,9 @@ import dns.resolver
 
 MAX_REQUEST = 1024
 MAX_MX = 10
+# What Postfix supports: usage DANE-TA(2)/DANE-EE(3), selector cert/SPKI,
+# matching full/SHA-256/SHA-512. Usages 0 and 1 are ignored for SMTP (RFC 7672).
+USABLE_TLSA = {"usage": {2, 3}, "selector": {0, 1}, "mtype": {0, 1, 2}}
 DNS_TIMEOUT = 10
 
 log = logging.getLogger("sovereign-tls-policy")
@@ -81,16 +88,19 @@ class Policy:
         return list(answer.rrset) if answer.rrset is not None else []
 
     async def dane_applies(self, domain):
+        """True if DANE protects every MX host, so MTA-STS is not needed."""
         mx = await self._secure(domain, "MX")
         if mx is None:
             return False  # MX lookup not DNSSEC-validated: no DANE (as in Postfix)
         hosts = [r.exchange.to_text(omit_final_dot=True) for r in sorted(mx, key=lambda r: r.preference)]
         hosts = [h for h in hosts if h] or [domain]  # no MX: the domain itself
-        for host in hosts[:MAX_MX]:
+        if len(hosts) > MAX_MX:
+            return False
+        for host in hosts:
             tlsa = await self._secure(f"_25._tcp.{host}", "TLSA")
-            if tlsa:
-                return True
-        return False
+            if not tlsa or not any(usable(record) for record in tlsa):
+                return False
+        return True
 
     async def forward(self, request):
         reader, writer = await asyncio.wait_for(
@@ -110,7 +120,7 @@ class Policy:
             return b"NOTFOUND "
         try:
             if await self.dane_applies(domain):
-                log.info("%s: DANE (TLSA authenticated), MTA-STS not consulted", domain)
+                log.info("%s: DANE for every MX host, MTA-STS not consulted", domain)
                 return b"NOTFOUND "
         except DnsTemporaryFailure as exc:
             log.warning("%s: DNS failure, deferring: %s", domain, exc)
@@ -120,8 +130,16 @@ class Policy:
         except (OSError, asyncio.TimeoutError, ValueError, asyncio.IncompleteReadError) as exc:
             log.warning("%s: MTA-STS resolver unavailable, deferring: %s", domain, exc)
             return b"TEMP MTA-STS resolver unavailable"
-        log.info("%s: %s", domain, reply.decode("utf-8", "replace"))
+        log.info("%s: not DANE for every MX host, MTA-STS: %s", domain, reply.decode("utf-8", "replace"))
         return reply
+
+
+def usable(record):
+    return (
+        record.usage in USABLE_TLSA["usage"]
+        and record.selector in USABLE_TLSA["selector"]
+        and record.mtype in USABLE_TLSA["mtype"]
+    )
 
 
 def _is_ip(value):
