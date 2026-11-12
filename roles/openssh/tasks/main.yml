@@ -10,14 +10,26 @@
     path: "{{ ansible_facts['getent_passwd'][openssh_login_user][4] }}/.ssh/authorized_keys"
   register: openssh_authorized_keys
 
+# ssh-keygen accepts the authorized_keys format, including options; it fails
+# when no line holds a valid key (only comments, a truncated paste).
+- name: Read the login user's keys
+  ansible.builtin.command:
+    argv: [ssh-keygen, -l, -f, "{{ openssh_authorized_keys.stat.path }}"]
+  register: openssh_key_list
+  changed_when: false
+  failed_when: false
+  check_mode: false
+  when: openssh_authorized_keys.stat.exists
+
 - name: Assert that the login user has an SSH key
   ansible.builtin.assert:
     that:
       - openssh_authorized_keys.stat.exists
       - openssh_authorized_keys.stat.size > 0
+      - openssh_key_list.rc | default(1) == 0
     fail_msg: >-
       Password logins are about to be turned off, but {{ openssh_login_user }} has no
-      keys in {{ openssh_authorized_keys.stat.path | default('~/.ssh/authorized_keys') }}.
+      valid keys in {{ openssh_authorized_keys.stat.path | default('~/.ssh/authorized_keys') }}.
       Add your public key first, or you would be locked out of this server.
     quiet: true
 
@@ -45,3 +57,22 @@
     name: ssh
     state: started
     enabled: true
+
+# Another drop-in that sorts earlier, or a Match block, could still allow
+# passwords; check what sshd actually uses.
+- name: Read the effective sshd configuration
+  ansible.builtin.command:
+    argv: [sshd, -T]
+  register: openssh_effective
+  changed_when: false
+  check_mode: false
+
+- name: Assert that password logins are off
+  ansible.builtin.assert:
+    that:
+      - "'passwordauthentication no' in openssh_effective.stdout_lines | map('lower') | list"
+      - "'kbdinteractiveauthentication no' in openssh_effective.stdout_lines | map('lower') | list"
+    fail_msg: >-
+      sshd still allows password logins. Another file in /etc/ssh/sshd_config.d/
+      that sorts before 00-sovereign.conf, or sshd_config itself, sets it.
+    quiet: true

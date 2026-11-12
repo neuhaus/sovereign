@@ -33,7 +33,7 @@ Installation
     install -d -o deploy -g deploy -m 700 /home/deploy/.ssh
     # put your public key into /home/deploy/.ssh/authorized_keys, owned by deploy
 
-Make sure this key works: the playbook turns off SSH password logins for the whole server, and it stops if the user it connects as has no key.
+Make sure this key works: the playbook turns off SSH password logins for the whole server, and it stops if the user it connects as has no valid key. After the first run, **log in once more from a second terminal before closing your session,** to be sure you still can.
 
 **2. Configure.** On your computer:
 

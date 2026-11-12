@@ -46,3 +46,18 @@ def test_no_key_stops_the_run_before_anything_changes(host):
     variables = {"sovtest_role": "openssh", "openssh_login_user": "daemon"}
     output = run_playbook(host, TESTS / "assert_role.yml", variables, expect_failure=True)
     assert "locked out" in output, output
+
+
+def test_refuses_without_a_valid_key(host):
+    # A non-empty authorized_keys with no usable key (here only a comment).
+    host.run("userdel -r sshtest")
+    host.check_output("useradd -m sshtest")
+    host.check_output(
+        "install -d -o sshtest -m 0700 ~sshtest/.ssh && echo '# key goes here' > ~sshtest/.ssh/authorized_keys"
+    )
+    try:
+        variables = {"sovtest_role": "openssh", "openssh_login_user": "sshtest"}
+        output = run_playbook(host, TESTS / "assert_role.yml", variables, expect_failure=True)
+        assert "valid keys" in output, output
+    finally:
+        host.run("userdel -r sshtest")
