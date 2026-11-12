@@ -33,14 +33,20 @@ def client(peer):
 def apply_roles(host):
     """Run the roles with dave added (no hash: without him); returns the changed count."""
 
-    def run(dave_hash=None, app_passwords=None, extra_aliases=None):
+    def run(dave_hash=None, app_passwords=None, extra_aliases=None, enabled=True, quota_mb=0):
         variables = {
             "maildb_mailboxes": "{{ mail_mailboxes }}",
             "sovtest_extra_aliases": extra_aliases or [],
             "maildb_aliases": "{{ mail_aliases + sovtest_extra_aliases }}",
         }
         if dave_hash:
-            dave = {"address": "dave@{{ sovtest_domain }}", "password": dave_hash, "app_passwords": app_passwords or []}
+            dave = {
+                "address": "dave@{{ sovtest_domain }}",
+                "password": dave_hash,
+                "app_passwords": app_passwords or [],
+                "enabled": enabled,
+                "quota_mb": quota_mb,
+            }
             variables["sovtest_dave"] = [dave]
             variables["maildb_mailboxes"] = "{{ mail_mailboxes + sovtest_dave }}"
         return run_playbook(host, TESTS / "maildb_run.yml", variables)
@@ -54,6 +60,19 @@ def new_hash(host, password):
 
 def imap_ok(client, ctx, password):
     return client("imap-login", ctx["ip"], "993", ctx["dave"], password)["ok"]
+
+
+def session_ends(host, peer, ctx, password, change):
+    """Hold an IMAP session as dave, run change(), report whether it was ended."""
+    dns = peer("dns")
+    dns.run("rm -f /tmp/imap-hold.json")
+    dns.check_output(
+        "nohup python3 /tmp/mailclient.py imap-hold %s %s %s 120 > /tmp/imap-hold.json 2>&1 &", ctx["ip"], ctx["dave"], password
+    )
+    assert wait_for(lambda: ctx["dave"] in host.run("doveadm who").stdout)
+    change()
+    assert wait_for(lambda: dns.run("test -s /tmp/imap-hold.json").rc == 0, seconds=150)
+    return json.loads(dns.file("/tmp/imap-hold.json").content_string)["disconnected"]
 
 
 def wait_for(check, seconds=30):
@@ -98,15 +117,17 @@ def test_mailbox_lifecycle_and_reset(host, peer, client, ctx, apply_roles):
         assert imap_ok(client, ctx, by_user)
 
         # A reset ends open sessions.
-        dns = peer("dns")
-        dns.check_output(
-            "nohup python3 /tmp/mailclient.py imap-hold %s %s %s 120 > /tmp/imap-hold.json 2>&1 &", ctx["ip"], ctx["dave"], by_user
-        )
-        assert wait_for(lambda: ctx["dave"] in host.run("doveadm who").stdout)
-        apply_roles(hash_second)
-        assert wait_for(lambda: dns.run("test -s /tmp/imap-hold.json").rc == 0)
-        assert json.loads(dns.file("/tmp/imap-hold.json").content_string)["disconnected"]
+        assert session_ends(host, peer, ctx, by_user, lambda: apply_roles(hash_second))
         assert imap_ok(client, ctx, second_reset)
+
+        # Disabling the mailbox ends them too, and blocks logins.
+        assert session_ends(host, peer, ctx, second_reset, lambda: apply_roles(hash_second, enabled=False))
+        assert not imap_ok(client, ctx, second_reset)
+        apply_roles(hash_second)
+        assert imap_ok(client, ctx, second_reset)
+
+        # So does removing it.
+        assert session_ends(host, peer, ctx, second_reset, apply_roles)
     finally:
         apply_roles()
     # A removed mailbox can no longer log in.
@@ -136,7 +157,7 @@ def alias_targets(host, source):
     return result.stdout.strip()
 
 
-def test_app_passwords_follow_the_inventory(host, client, ctx, apply_roles):
+def test_app_passwords_follow_the_inventory(host, peer, client, ctx, apply_roles):
     main = "sovtest-dave-main"
     main_hash = new_hash(host, main)
     first, second = "DavePhn1-sovtest-first", "DavePhn1-sovtest-second"
@@ -151,8 +172,9 @@ def test_app_passwords_follow_the_inventory(host, client, ctx, apply_roles):
         assert not imap_ok(client, ctx, first)
         assert imap_ok(client, ctx, main)
 
-        # Removed.
-        apply_roles(main_hash)
+        # Removed. Sessions can't be matched to the password they used, so all of
+        # the mailbox's sessions end, also one opened with the main password.
+        assert session_ends(host, peer, ctx, main, lambda: apply_roles(main_hash))
         assert not imap_ok(client, ctx, second)
         assert imap_ok(client, ctx, main)
     finally:
@@ -191,3 +213,37 @@ def test_manual_changes_are_reverted(host, sovtest_vars, apply_roles):
     assert host.check_output("sqlite3 %s %s", DB, "SELECT enabled FROM mailboxes WHERE localpart = 'bob'") == "1"
     assert host.check_output("sqlite3 %s %s", DB, "SELECT count(*) FROM app_passwords WHERE id = 'AlicPhn1'") == "1"
     assert apply_roles() == 0
+
+
+def storage_limit(host, user):
+    rows = [line.split("\t") for line in host.check_output("doveadm -f tab quota get -u %s", user).splitlines()[1:]]
+    storage = [row for row in rows if row[1] == "STORAGE"]
+    assert storage, rows
+    return storage[0][3]
+
+
+def test_quota_is_enforced(host, ctx, apply_roles):
+    dave = ctx["dave"]
+    try:
+        apply_roles(new_hash(host, "sovtest-dave-quota"), quota_mb=1)
+        # Columns: quota name, type, value, limit (KiB for STORAGE), percent.
+        assert storage_limit(host, dave) == "1024"
+        small = "From: a@example.org\nTo: %s\nSubject: small\n\nfits\n" % dave
+        assert host.run("printf %s | doveadm save -u %s -m INBOX", small, dave).rc == 0
+        # About 2 MB: over the 1 MB limit.
+        big = host.run(
+            "{ printf 'From: a@example.org\\nTo: %s\\nSubject: big\\n\\n'; head -c 1500000 /dev/urandom | base64; }"
+            " | doveadm save -u %s -m INBOX", dave, dave
+        )
+        assert big.rc != 0
+        assert "quota" in (big.stdout + big.stderr).lower()
+        # Without a limit again, the same message fits.
+        apply_roles(new_hash(host, "sovtest-dave-quota"))
+        assert storage_limit(host, dave) in ("-", "")
+        assert host.run(
+            "{ printf 'From: a@example.org\\nTo: %s\\nSubject: big\\n\\n'; head -c 1500000 /dev/urandom | base64; }"
+            " | doveadm save -u %s -m INBOX", dave, dave
+        ).rc == 0
+    finally:
+        apply_roles()
+        host.run("rm -rf /var/vmail/%s/dave", dave.split("@")[1])

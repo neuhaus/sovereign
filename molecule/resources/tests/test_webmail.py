@@ -4,6 +4,7 @@ Clients run on the dns instance, which fail2ban ignores; pebble plays the
 attacker in the ban tests.
 """
 
+import json
 import time
 import uuid
 
@@ -193,6 +194,40 @@ def test_password_change(host, client, ctx):
     assert host.check_output("sqlite3 %s %s", DB, stored) == after
     assert host.check_output("sqlite3 %s %s", DB, "SELECT count(*) FROM aliases WHERE source LIKE 'team@%'") == "2"
     assert client("imap-login", ctx["ip"], "993", ctx["carol"], new)["ok"]
+
+
+PASSWD_REQUEST = """
+import json, socket, sys
+s = socket.socket(socket.AF_UNIX)
+s.connect("/run/sovereign-passwd.sock")
+s.sendall(json.dumps(dict(user=sys.argv[1], current=sys.argv[2], new=sys.argv[3])).encode() + b"\\n")
+print(s.makefile().readline().strip())
+"""
+
+
+def test_password_service_needs_the_current_password(host, ctx):
+    # What a compromised Roundcube could do: ask for someone else's password
+    # to be changed. Without bob's current password nothing changes.
+    bob = ctx["carol"].replace("carol@", "bob@")
+    stored = "SELECT password FROM mailboxes WHERE localpart = 'bob'"
+    before = host.check_output("sqlite3 %s %s", DB, stored)
+    reply = host.check_output(
+        "runuser -u roundcube -- python3 -c %s %s %s %s", PASSWD_REQUEST, bob, "guessed-password", "sovtest-taken-over"
+    )
+    assert json.loads(reply) == {"ok": False, "error": "wrong password"}
+    # An app password is not the current password either.
+    reply = host.check_output(
+        "runuser -u roundcube -- python3 -c %s %s %s %s", PASSWD_REQUEST, ctx["carol"], CAROL_APP, "sovtest-taken-over"
+    )
+    assert not json.loads(reply)["ok"]
+    assert host.check_output("sqlite3 %s %s", DB, stored) == before
+
+
+def test_password_service_only_for_roundcube(host, ctx):
+    socket = host.file("/run/sovereign-passwd.sock")
+    assert socket.is_socket and (socket.user, socket.group, socket.mode) == ("root", "sovereign-passwd", 0o660)
+    result = host.run("runuser -u www-data -- python3 -c %s %s %s %s", PASSWD_REQUEST, ctx["carol"], "x", "y" * 12)
+    assert result.rc != 0 and "Permission denied" in result.stderr
 
 
 def test_maildb_does_not_see_changed_password_as_a_difference(host):

@@ -22,8 +22,9 @@ dovecot_vmail_dir: /var/vmail
 dovecot_maildb_path: "{{ maildb_path | default('/var/lib/sovereign/maildb/mail.sqlite') }}"
 dovecot_maildb_group: "{{ maildb_group | default('maildb') }}"
 
-# Mailboxes whose password the maildb role just reset: their open sessions end.
-dovecot_kick_addresses: "{{ maildb_reset_addresses | default([]) }}"
+# Mailboxes whose access the maildb role just revoked (password reset, mailbox
+# removed or disabled, app password removed): their open sessions end.
+dovecot_kick_addresses: "{{ maildb_revoked_addresses | default([]) }}"
 
 # Authentication socket for local services that check logins against Dovecot,
 # /run/dovecot/<name>. Services get access by joining this group.

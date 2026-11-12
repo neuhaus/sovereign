@@ -49,9 +49,9 @@
   loop_control:
     label: "{{ item.source | default('?') }}"
 
-- name: Install sqlite3
+- name: Install sqlite3 and argon2 for Python
   ansible.builtin.apt:
-    name: sqlite3
+    name: [sqlite3, python3-argon2]
     state: present
     update_cache: true
     cache_valid_time: 3600
@@ -73,12 +73,23 @@
   ansible.builtin.user:
     name: "{{ maildb_writer }}"
     system: true
-    group: "{{ maildb_writer_group }}"
-    groups: "{{ maildb_group }}"
-    append: true
+    group: "{{ maildb_group }}"
     home: /nonexistent
     create_home: false
     shell: /usr/sbin/nologin
+
+- name: Read the members of the database group
+  ansible.builtin.getent:
+    database: group
+    key: "{{ maildb_group }}"
+
+# Earlier versions let Roundcube write the database directly.
+- name: Remove former writers from the database group
+  ansible.builtin.command:
+    argv: [gpasswd, -d, "{{ item }}", "{{ maildb_group }}"]
+  loop: "{{ maildb_former_writers }}"
+  when: item in (ansible_facts['getent_group'][maildb_group][2] | split(','))
+  changed_when: true
 
 - name: Create the database directory
   ansible.builtin.file:
@@ -153,10 +164,11 @@
   changed_when: false
   no_log: true
 
-# Used by the dovecot role to disconnect these users after the synchronisation.
-- name: Find mailboxes whose password is being reset
+# Used by the dovecot role to disconnect these users after the synchronisation:
+# a reset password, a removed or disabled mailbox, a removed app password.
+- name: Find mailboxes whose access is being revoked
   ansible.builtin.set_fact:
-    maildb_reset_addresses: "{{ lookup('ansible.builtin.template', 'reset-addresses.json.j2') | from_json }}"
+    maildb_revoked_addresses: "{{ lookup('ansible.builtin.template', 'revoked-addresses.json.j2') | from_json }}"
 
 # The synchronisation script contains password hashes: root only.
 - name: Render the synchronisation script
@@ -173,3 +185,44 @@
     argv: [sqlite3, -bail, -cmd, ".timeout 10000", "{{ maildb_path }}", ".read {{ maildb_dir }}/sync.sql"]
   when: maildb_current.stdout | trim != lookup('ansible.builtin.template', 'export.txt.j2') | trim
   changed_when: true
+
+# --- Password service for Roundcube --------------------------------------------
+- name: Create the password service's client group
+  ansible.builtin.group:
+    name: "{{ maildb_passwd_clients_group }}"
+    system: true
+
+- name: Create the program directory
+  ansible.builtin.file:
+    path: /usr/local/lib/sovereign
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Install the password service
+  ansible.builtin.copy:
+    src: sovereign-passwd
+    dest: /usr/local/lib/sovereign/sovereign-passwd
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Install the password service's units
+  ansible.builtin.template:
+    src: "{{ item }}.j2"
+    dest: "/etc/systemd/system/{{ item }}"
+    owner: root
+    group: root
+    mode: "0644"
+  loop:
+    - sovereign-passwd.socket
+    - sovereign-passwd@.service
+  notify: Restart the password service socket
+
+- name: Enable the password service socket
+  ansible.builtin.systemd_service:
+    name: sovereign-passwd.socket
+    state: started
+    enabled: true
+    daemon_reload: true

@@ -29,6 +29,18 @@
     update_cache: true
     cache_valid_time: 3600
 
+- name: Create Roundcube's PHP user
+  ansible.builtin.user:
+    name: "{{ roundcube_user }}"
+    system: true
+    group: "{{ roundcube_group }}"
+    groups: ["{{ roundcube_passwd_clients_group }}"]
+    append: true
+    home: /nonexistent
+    create_home: false
+    shell: /usr/sbin/nologin
+  notify: PHP-FPM configuration changed
+
 - name: Read the PHP version
   ansible.builtin.command:
     argv: [php, -r, echo PHP_MAJOR_VERSION . "." . PHP_MINOR_VERSION;]
@@ -76,8 +88,7 @@
   loop_control:
     label: "{{ item.dest }}"
 
-# Roundcube's own sql driver would switch the mail database to WAL on connect
-# (see the template); after that Postfix and Dovecot could no longer read it.
+# Password changes go through the password service (see the template).
 - name: Install the password driver
   ansible.builtin.template:
     src: password-driver.php.j2

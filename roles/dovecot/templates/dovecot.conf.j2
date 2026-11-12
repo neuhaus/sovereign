@@ -58,7 +58,9 @@ passdb apps {
 }
 
 userdb sql {
-  sql_query = SELECT localpart || '@' || domain AS user \
+  # quota_mb from the inventory; 0 means no limit.
+  sql_query = SELECT localpart || '@' || domain AS user, \
+    CASE WHEN quota_mb > 0 THEN quota_mb || 'M' ELSE 'unlimited' END AS quota_storage_size \
     FROM mailboxes \
     WHERE localpart = '%{user | username}' AND domain = '%{user | domain}' AND enabled = 1
   sql_iterate_query = SELECT localpart || '@' || domain AS user FROM mailboxes WHERE enabled = 1
@@ -115,10 +117,26 @@ namespace inbox {
 
 mail_plugins {
   mail_crypt = yes
+  quota = yes
 {% if dovecot_fts_enabled %}
   fts = yes
   fts_flatcurve = yes
 {% endif %}
+}
+
+# --- Quota (per mailbox: quota_storage_size from the userdb) ------------------
+# Over the limit, saving fails and delivery is refused, so the sender gets a
+# bounce. IMAP clients can show the usage (GETQUOTAROOT).
+quota "User quota" {
+}
+
+protocol imap {
+  mail_plugins {
+    imap_quota = yes
+{% if dovecot_spam_learning %}
+    imap_sieve = yes
+{% endif %}
+  }
 }
 
 # --- At-rest encryption (mail_crypt, global key pair) ------------------------
@@ -163,12 +181,8 @@ protocol lmtp {
 {% if dovecot_spam_learning %}
 
 # Spam learning: moving mail out of Junk trains it as ham (see also the Junk
-# mailbox above). The scripts pipe the message to Rspamd.
-protocol imap {
-  mail_plugins {
-    imap_sieve = yes
-  }
-}
+# mailbox above). The scripts pipe the message to Rspamd. imap_sieve is
+# enabled in the protocol imap block above.
 sieve_plugins {
   sieve_imapsieve = yes
   sieve_extprograms = yes

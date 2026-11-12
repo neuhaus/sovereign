@@ -1,0 +1,30 @@
+# {{ ansible_managed }}
+[Unit]
+Description=Mail password change
+
+[Service]
+Type=simple
+User={{ maildb_writer }}
+Group={{ maildb_group }}
+ExecStart=/usr/local/lib/sovereign/sovereign-passwd {{ maildb_path }} {{ maildb_passwd_minimum_length }}
+StandardInput=socket
+StandardOutput=socket
+StandardError=journal
+RuntimeMaxSec=30
+# Argon2id needs 64 MiB per hash.
+MemoryMax=256M
+NoNewPrivileges=yes
+PrivateNetwork=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectSystem=strict
+ProtectHome=yes
+ReadWritePaths={{ maildb_db_dir }}
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictAddressFamilies=AF_UNIX
+RestrictNamespaces=yes
+LockPersonality=yes
+SystemCallArchitectures=native
+CapabilityBoundingSet=

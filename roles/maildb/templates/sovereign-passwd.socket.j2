@@ -1,0 +1,14 @@
+# {{ ansible_managed }}
+[Unit]
+Description=Mail password changes (socket)
+
+[Socket]
+ListenStream={{ maildb_passwd_socket }}
+SocketUser=root
+SocketGroup={{ maildb_passwd_clients_group }}
+SocketMode=0660
+Accept=yes
+MaxConnections=4
+
+[Install]
+WantedBy=sockets.target

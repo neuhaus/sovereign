@@ -4,9 +4,13 @@
 roundcube_host: "{{ certbot_domains[0] }}"
 
 # Runs PHP; owns the mail database so users can change their password there.
-roundcube_user: "{{ maildb_writer | default('roundcube') }}"
-roundcube_group: "{{ maildb_writer_group | default('www-data') }}"
-roundcube_maildb_path: "{{ maildb_path | default('/var/lib/sovereign/maildb/mail.sqlite') }}"
+# Roundcube's own PHP user: not www-data, which nginx also runs as. The primary
+# group gives it access to the files of Debian's Roundcube package.
+roundcube_user: roundcube
+roundcube_group: www-data
+# Password changes go through the maildb role's password service.
+roundcube_passwd_socket: "{{ maildb_passwd_socket | default('/run/sovereign-passwd.sock') }}"
+roundcube_passwd_clients_group: "{{ maildb_passwd_clients_group | default('sovereign-passwd') }}"
 
 # Debian's temp directory is reset to www-data on every package upgrade.
 roundcube_temp_dir: /var/lib/roundcube-sovereign/temp

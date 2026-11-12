@@ -18,7 +18,7 @@ Generate hashes on your own computer where possible, so that passwords stay out 
 
     doveadm pw -s ARGON2ID
 
-Removing a mailbox ends its login and its mail delivery. **Its mail stays on disk** in `/var/vmail/<domain>/<user>`, and in the backups until retention removes it; delete the directory if the mail should go.
+Removing or disabling a mailbox ends its login and its mail delivery, and the playbook disconnects its open sessions, including webmail sessions (Roundcube logs in to IMAP for each request). **A removed mailbox's mail stays on disk** in `/var/vmail/<domain>/<user>`, and in the backups until retention removes it; delete the directory if the mail should go.
 
 ## Passwords
 
@@ -28,6 +28,8 @@ Users change their main password in the webmail, under Settings. Ansible does no
 
 - Give the user the temporary password and ask them to change it. Nothing enforces this.
 - If the account may be compromised, also remove its app passwords: they stay valid otherwise. Check its aliases and Sieve filters for forwarding too.
+
+**Removing or replacing an app password** also disconnects all of the mailbox's open sessions: Dovecot can't tell which password a session used.
 
 Reverting to an earlier hash counts as a new hash, so it resets the password again. That includes a `git revert` of a commit containing a reset.
 
@@ -133,7 +135,7 @@ Until the new record has spread, servers using DANE defer mail to you and retry 
 ## Operations
 
 - **Rspamd web interface:** only on the server itself. `ssh -L 11334:127.0.0.1:11334 deploy@mail.example.org`, then open <http://127.0.0.1:11334>.
-- **Metrics:** node exporter on 9100, Dovecot on 9900, only from `monitoring_sources`. Worth alerting on: `sovereign_backup_last_success_timestamp_seconds`, which stops advancing when backups fail.
+- **Metrics:** node exporter on 9100, Dovecot on 9900, only from `monitoring_sources`. Worth alerting on: `sovereign_backup_last_success_timestamp_seconds`, which stops advancing when backups fail or are incomplete, and the weekly repository check; see [BACKUP.md](BACKUP.md#checking-on-backups).
 - **Failed logins:** `fail2ban-client banned` lists bans. There are jails for SSH, Postfix, Dovecot, webmail basic auth, Roundcube and Radicale. Unban with `fail2ban-client set <jail> unbanip <address>`.
 - **Automatic reboots** after kernel updates are off, because an encrypted server needs a remote unlock. Enable them with `unattended_upgrades_automatic_reboot: true`.
 - **What mail_crypt protects:** message files only. Dovecot's index cache and the search index hold header fields and search terms in plaintext. For those, rely on disk encryption.

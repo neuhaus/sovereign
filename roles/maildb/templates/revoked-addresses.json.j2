@@ -1,10 +1,37 @@
+{#- Mailboxes whose open sessions must end after the synchronisation: their
+    password is reset, the mailbox is removed or disabled, or an app password is
+    removed or replaced. Sessions can't be matched to the app password they used,
+    so a changed app password ends all of the mailbox's sessions. -#}
 {% set stored = {} %}
-{% for line in maildb_current.stdout_lines if line.startswith('mailbox|') %}
+{% set stored_apps = [] %}
+{% for line in maildb_current.stdout_lines %}
 {% set fields = line.split('|') %}
-{% set _ = stored.update({fields[1]: fields[2]}) %}
+{% if fields[0] == 'mailbox' %}
+{% set _ = stored.update({fields[1]: {'password': fields[2], 'enabled': fields[4] | default('1')}}) %}
+{% elif fields[0] == 'app' %}
+{% set _ = stored_apps.append(fields[1:] | join('|')) %}
+{% endif %}
 {% endfor %}
-{% set resets = [] %}
-{% for mailbox in maildb_mailboxes if stored.get(mailbox.address, '') not in ['', mailbox.password] %}
-{% set _ = resets.append(mailbox.address) %}
+{% set wanted = {} %}
+{% set wanted_apps = [] %}
+{% for mailbox in maildb_mailboxes %}
+{% set _ = wanted.update({mailbox.address: mailbox}) %}
+{% for app in mailbox.app_passwords | default([]) %}
+{% set _ = wanted_apps.append([mailbox.address, app.id, app.name, app.password] | join('|')) %}
 {% endfor %}
-{{ resets | to_json }}
+{% endfor %}
+{% set revoked = [] %}
+{% for address, old in stored.items() %}
+{% set new = wanted.get(address) %}
+{% if new is none %}
+{% set _ = revoked.append(address) %}
+{% elif old.password not in ['', new.password] %}
+{% set _ = revoked.append(address) %}
+{% elif old.enabled == '1' and not (new.enabled | default(true) | bool) %}
+{% set _ = revoked.append(address) %}
+{% endif %}
+{% endfor %}
+{% for app in stored_apps if app not in wanted_apps %}
+{% set _ = revoked.append(app.split('|')[0]) %}
+{% endfor %}
+{{ revoked | unique | sort | to_json }}

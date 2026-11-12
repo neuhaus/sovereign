@@ -11,13 +11,13 @@ def query(host, sql):
 
 def test_database_permissions(host):
     db = host.file(DB)
-    assert db.user == "roundcube"
+    assert db.user == "maildb-passwd"
     assert db.group == "maildb"
     assert db.mode == 0o640
     # SQLite creates its journal next to the database, so the writer owns this
     # directory. Nobody but root may write where root's scripts are.
     directory = host.file("/var/lib/sovereign/maildb")
-    assert (directory.user, directory.group, directory.mode) == ("roundcube", "maildb", 0o750)
+    assert (directory.user, directory.group, directory.mode) == ("maildb-passwd", "maildb", 0o750)
     scripts = host.file("/var/lib/sovereign")
     assert (scripts.user, scripts.group, scripts.mode) == ("root", "maildb", 0o750)
     # The synchronisation script contains password hashes.
@@ -50,10 +50,13 @@ def test_schema_version(host):
     assert query(host, "PRAGMA user_version") == ["2"]
 
 
-def test_nginx_cannot_write_the_database(host):
+def test_only_the_password_service_writes_the_database(host):
     assert host.run("runuser -u www-data -- test -r %s", DB).rc != 0
     assert host.run("runuser -u www-data -- test -w %s", DB).rc != 0
-    assert host.run("runuser -u roundcube -- test -w %s", DB).rc == 0
-    assert host.run("runuser -u roundcube -- test -w /var/lib/sovereign").rc != 0
+    # Roundcube changes passwords through the service, without database access.
+    assert host.run("runuser -u roundcube -- test -r %s", DB).rc != 0
+    assert "maildb" not in host.check_output("id -nG roundcube").split()
+    assert host.run("runuser -u maildb-passwd -- test -w %s", DB).rc == 0
+    assert host.run("runuser -u maildb-passwd -- test -w /var/lib/sovereign").rc != 0
     assert host.run("runuser -u dovecot -- test -w %s", DB).rc != 0
     assert host.run("runuser -u dovecot -- test -r %s", DB).rc == 0

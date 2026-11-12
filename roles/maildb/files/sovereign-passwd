@@ -1,0 +1,78 @@
+#!/usr/bin/python3
+"""Change one mailbox's main password, for Roundcube's password plugin.
+
+Managed by Ansible (Sovereign maildb role).
+
+systemd starts one instance per connection on a socket only Roundcube's PHP
+user can open (Accept=yes); the connection is stdin and stdout. Request, one
+JSON line: {"user": "alice@example.org", "current": "...", "new": "..."}.
+Reply, one JSON line: {"ok": true} or {"ok": false, "error": "..."}.
+
+The service checks the current main password itself, so whoever controls the
+socket can only change passwords they already know. Roundcube therefore needs
+no write access to the mail database. App passwords are not accepted as the
+current password.
+
+Usage: sovereign-passwd DATABASE MINIMUM_LENGTH
+"""
+
+import json
+import re
+import sqlite3
+import sys
+
+import argon2
+
+PREFIX = "{ARGON2ID}"
+# Same parameters as "doveadm pw -s ARGON2ID".
+HASHER = argon2.PasswordHasher(time_cost=3, memory_cost=65536, parallelism=1)
+ADDRESS = re.compile(r"[^@\s]{1,64}@[^@\s]{1,253}")
+MAX_REQUEST = 8192
+
+
+def reply(ok, error=None, log=None):
+    print(json.dumps({"ok": True} if ok else {"ok": False, "error": error}), flush=True)
+    if log:
+        print(log, file=sys.stderr, flush=True)
+
+
+def main(database, minimum_length):
+    try:
+        request = json.loads(sys.stdin.readline(MAX_REQUEST))
+        user, current, new = request["user"], request["current"], request["new"]
+        if not all(isinstance(value, str) for value in (user, current, new)):
+            raise ValueError
+    except (ValueError, KeyError, TypeError):
+        return reply(False, "bad request", "bad request")
+    if not ADDRESS.fullmatch(user):
+        return reply(False, "bad request", "bad request: invalid user name")
+    if len(new) < minimum_length or len(new) > 1024:
+        return reply(False, "new password too short", f"{user}: new password rejected (length)")
+    localpart, domain = user.rsplit("@", 1)
+
+    db = sqlite3.connect(database, timeout=10, isolation_level=None)
+    try:
+        row = db.execute(
+            "SELECT password FROM mailboxes WHERE localpart = ? AND domain = ? AND enabled = 1", (localpart, domain)
+        ).fetchone()
+        stored = row[0] if row else ""
+        try:
+            if not stored.startswith(PREFIX):
+                raise argon2.exceptions.VerificationError
+            HASHER.verify(stored[len(PREFIX) :], current)
+        except (argon2.exceptions.VerificationError, argon2.exceptions.InvalidHashError):
+            return reply(False, "wrong password", f"{user}: current password wrong")
+        # Only if nothing changed it meanwhile (an admin reset, say).
+        changed = db.execute(
+            "UPDATE mailboxes SET password = ? WHERE localpart = ? AND domain = ? AND password = ?",
+            (PREFIX + HASHER.hash(new), localpart, domain, stored),
+        ).rowcount
+    finally:
+        db.close()
+    if changed != 1:
+        return reply(False, "password changed meanwhile, try again", f"{user}: changed concurrently")
+    return reply(True, log=f"{user}: password changed")
+
+
+if __name__ == "__main__":
+    main(sys.argv[1], int(sys.argv[2]))

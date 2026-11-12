@@ -42,8 +42,14 @@ maildb_path: "{{ maildb_db_dir }}/mail.sqlite"
 # Group that may read the database (dovecot and postfix are added to it).
 maildb_group: maildb
 
-# The only user besides root that may write the database: Roundcube's PHP
-# processes, for password changes. Not www-data, which nginx also runs as; the
-# primary group gives it access to the files of Debian's Roundcube package.
-maildb_writer: roundcube
-maildb_writer_group: www-data
+# The only user besides root that may write the database: the password service
+# (sovereign-passwd), which Roundcube asks to change a user's main password. It
+# checks the current password itself, so Roundcube needs no database access.
+maildb_writer: maildb-passwd
+maildb_passwd_socket: /run/sovereign-passwd.sock
+# Members may use the password service (the roundcube role adds its PHP user).
+maildb_passwd_clients_group: sovereign-passwd
+maildb_passwd_minimum_length: "{{ roundcube_password_minimum_length | default(12) }}"
+# Users that could write the database in earlier versions: removed from the
+# database group.
+maildb_former_writers: [roundcube]
