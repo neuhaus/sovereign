@@ -39,7 +39,9 @@ def test_settings_only_for_root(host):
     assert (staging.user, staging.mode) == ("root", 0o700)
 
 
-@pytest.mark.parametrize("timer", ["sovereign-backup.timer", "sovereign-backup-prune.timer"])
+@pytest.mark.parametrize(
+    "timer", ["sovereign-backup.timer", "sovereign-backup-prune.timer", "sovereign-backup-check.timer"]
+)
 def test_timers_enabled(host, timer):
     assert host.service(timer).is_enabled
     assert host.service(timer).is_running
@@ -76,9 +78,54 @@ def test_repository_is_encrypted(host, backup):
     assert host.run("bash -c 'RESTIC_REPOSITORY=/var/backups/restic-test RESTIC_PASSWORD=wrong restic cat config'").rc != 0
 
 
+def metrics(host):
+    lines = host.check_output("curl -fsS http://127.0.0.1:9100/metrics").splitlines()
+    return dict(line.split(" ", 1) for line in lines if line.startswith("sovereign_backup"))
+
+
 def test_success_metric_exported(host, backup):
-    metrics = host.check_output("curl -fsS http://127.0.0.1:9100/metrics")
-    assert "sovereign_backup_last_success_timestamp_seconds " in metrics
+    exported = metrics(host)
+    assert "sovereign_backup_last_success_timestamp_seconds" in exported
+    assert exported["sovereign_backup_last_exit_code"] == "0"
+    assert exported["sovereign_backup_last_attempt_timestamp_seconds"] == (
+        exported["sovereign_backup_last_success_timestamp_seconds"]
+    )
+
+
+def test_incomplete_backup_is_a_failure(host, backup):
+    # restic exit code 3 means files could not be read. Pretend that happens on
+    # every attempt, with a wrapper ahead of restic in the service's PATH.
+    wrapper = "/usr/local/bin/restic"
+    assert not host.file(wrapper).exists
+    before = metrics(host)["sovereign_backup_last_success_timestamp_seconds"]
+    host.check_output(
+        "printf '%%s\\n' '#!/bin/sh' "
+        "'[ \"$1\" = backup ] && echo attempt >> /run/restic-attempts && exit 3' "
+        "'exec /usr/bin/restic \"$@\"' > %s && chmod 0755 %s",
+        wrapper,
+        wrapper,
+    )
+    try:
+        host.run("rm -f /run/restic-attempts")
+        assert host.run("systemctl start sovereign-backup.service").rc != 0
+        assert host.check_output("cat /run/restic-attempts").splitlines() == ["attempt", "attempt"]
+        exported = metrics(host)
+        assert exported["sovereign_backup_last_exit_code"] == "3"
+        assert exported["sovereign_backup_last_success_timestamp_seconds"] == before
+        assert exported["sovereign_backup_last_attempt_timestamp_seconds"] != before
+    finally:
+        host.run("rm -f %s /run/restic-attempts", wrapper)
+        host.run("systemctl reset-failed sovereign-backup.service")
+    assert host.run("systemctl start sovereign-backup.service").rc == 0
+    assert metrics(host)["sovereign_backup_last_exit_code"] == "0"
+
+
+def test_repository_check(host, backup):
+    result = host.run("systemctl start sovereign-backup-check.service")
+    assert result.rc == 0, host.check_output("journalctl -n 40 -u sovereign-backup-check.service --no-pager")
+    exported = metrics(host)
+    assert exported["sovereign_backup_check_last_exit_code"] == "0"
+    assert "sovereign_backup_check_last_success_timestamp_seconds" in exported
 
 
 def test_restored_mail_database_is_intact(host, backup):

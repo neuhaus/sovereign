@@ -58,6 +58,11 @@ def test_second_backup_works(host, append_only):
     assert host.run("systemctl start sovereign-backup.service").rc == 0
 
 
+def test_check_works(host, append_only):
+    result = host.run("systemctl start sovereign-backup-check.service")
+    assert result.rc == 0, host.check_output("journalctl -n 40 -u sovereign-backup-check.service --no-pager")
+
+
 def test_root_on_the_mail_server_cannot_delete_backups(host, append_only, repository):
     before = snapshots(host)
     assert restic(host, "forget --prune --keep-last 1").rc != 0

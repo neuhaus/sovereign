@@ -4,12 +4,30 @@
 # sovereign-backup init   create the repository if there is none
 # sovereign-backup run    back up databases, mail and keys
 # sovereign-backup prune  apply the retention policy
+# sovereign-backup check  check the repository's structure
 #
 # Other restic commands: set -a; . /etc/restic/env; set +a; restic snapshots
 set -euo pipefail
 set -a
 . /etc/restic/env
 set +a
+
+# Writes "name value" lines to one textfile for node_exporter, atomically.
+write_metrics() {
+    local file={{ restic_metrics_dir }}/$1.prom
+    shift
+    printf '%s\n' "$@" > "$file.new"
+    chmod 0644 "$file.new"
+    mv "$file.new" "$file"
+}
+
+backup() {
+    restic backup --one-file-system --retry-lock 30m --tag sovereign \
+{% for exclude in restic_excludes %}
+        --exclude {{ exclude | quote }} \
+{% endfor %}
+        {{ restic_paths | map('quote') | join(' ') }}
+}
 
 case "${1:-}" in
 init)
@@ -34,23 +52,38 @@ run)
     sqlite3 -bail -cmd ".timeout 30000" {{ database.path | quote }} ".backup {{ restic_staging_dir }}/{{ database.name }}.new"
     mv {{ restic_staging_dir }}/{{ database.name }}.new {{ restic_staging_dir }}/{{ database.name }}
 {% endfor %}
-    # Exit code 3: a snapshot was made, but some files could not be read. On a
-    # live Maildir these are files Dovecot renamed in the meantime; they are
-    # picked up next time under the new name.
+    # Exit code 3: a snapshot was made, but some files could not be read, so it
+    # is incomplete. On a live Maildir the usual cause is a message Dovecot
+    # renamed in the meantime (a flag change), so one more run, which only
+    # reads what changed, usually completes. If that fails too, the backup
+    # fails: permission or read errors must not pass as success.
     rc=0
-    restic backup --one-file-system --retry-lock 30m --tag sovereign \
-{% for exclude in restic_excludes %}
-        --exclude {{ exclude | quote }} \
-{% endfor %}
-        {{ restic_paths | map('quote') | join(' ') }} || rc=$?
-    if [ "$rc" -ne 0 ] && [ "$rc" -ne 3 ]; then
-        exit "$rc"
+    backup || rc=$?
+    if [ "$rc" -eq 3 ]; then
+        echo "some files could not be read; running the backup once more" >&2
+        rc=0
+        backup || rc=$?
     fi
-    [ "$rc" -eq 0 ] || echo "warning: some files changed during the backup" >&2
-    metric={{ restic_metrics_dir }}/sovereign_backup.prom
-    printf 'sovereign_backup_last_success_timestamp_seconds %s\n' "$(date +%s)" > "$metric.new"
-    chmod 0644 "$metric.new"
-    mv "$metric.new" "$metric"
+    now=$(date +%s)
+    write_metrics sovereign_backup_attempt \
+        "sovereign_backup_last_attempt_timestamp_seconds $now" \
+        "sovereign_backup_last_exit_code $rc"
+    [ "$rc" -eq 0 ] || exit "$rc"
+    write_metrics sovereign_backup \
+        "sovereign_backup_last_success_timestamp_seconds $now"
+    ;;
+check)
+    # Structure and metadata only; reading all data back would download the
+    # whole repository. "restic check --read-data-subset 5%" does part of it.
+    rc=0
+    restic check --retry-lock 30m || rc=$?
+    now=$(date +%s)
+    write_metrics sovereign_backup_check_attempt \
+        "sovereign_backup_check_last_attempt_timestamp_seconds $now" \
+        "sovereign_backup_check_last_exit_code $rc"
+    [ "$rc" -eq 0 ] || exit "$rc"
+    write_metrics sovereign_backup_check \
+        "sovereign_backup_check_last_success_timestamp_seconds $now"
     ;;
 prune)
     restic forget --prune --retry-lock 30m --tag sovereign \
@@ -59,7 +92,7 @@ prune)
         --keep-monthly {{ restic_keep_monthly }}
     ;;
 *)
-    echo "usage: $0 init|run|prune" >&2
+    echo "usage: $0 init|run|prune|check" >&2
     exit 2
     ;;
 esac

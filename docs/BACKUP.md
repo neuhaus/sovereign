@@ -1,6 +1,6 @@
 # Backups and disaster recovery
 
-Restic backs up the server once a day and applies the retention policy once a week (7 daily, 4 weekly, 6 monthly snapshots, see `roles/restic/defaults/main.yml`). Backups are required: the playbook fails without a repository and password.
+Restic backs up the server once a day, checks the repository once a week and applies the retention policy once a week (7 daily, 4 weekly, 6 monthly snapshots, see `roles/restic/defaults/main.yml`). **With a daily backup, a total loss can cost up to about a day of mail and changes**; mail that other servers could not deliver in the meantime is retried by them for several days. Backups are required: the playbook fails without a repository and password.
 
 **Backed up:** `/var/vmail`, copies of the mail and Roundcube databases, the mail_crypt keys, DKIM keys, Radicale data, `/etc/letsencrypt` and the postsrsd secret.
 
@@ -56,7 +56,17 @@ Other restic commands need the settings:
     restic snapshots
     restic check
 
-Alert on the metric `sovereign_backup_last_success_timestamp_seconds`, because nothing else tells you when backups stop.
+A backup only counts as successful when restic could read every file. If some files can't be read, the script runs the backup once more (on a live server, a message whose flags changed during the backup is the usual cause); if that fails too, the job fails.
+
+Metrics for node exporter, because nothing else tells you when backups stop:
+
+| Metric | Meaning |
+|---|---|
+| `sovereign_backup_last_success_timestamp_seconds` | last complete backup; alert if it is older than about 26 hours |
+| `sovereign_backup_last_attempt_timestamp_seconds`, `sovereign_backup_last_exit_code` | last attempt and its restic exit code (3: files could not be read, snapshot incomplete) |
+| `sovereign_backup_check_last_success_timestamp_seconds`, `sovereign_backup_check_last_exit_code` | weekly `restic check`; alert if older than about 8 days or non-zero |
+
+The weekly check reads the repository's structure, not all data. To read part of the data back as well, run `restic check --read-data-subset 5%` now and then; it downloads that share of the repository.
 
 ## Restoring a mailbox
 

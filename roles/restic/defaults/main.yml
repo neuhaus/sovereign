@@ -29,6 +29,8 @@ restic_keep_monthly: 6
 
 restic_backup_on_calendar: "*-*-* 03:00:00"
 restic_prune_on_calendar: "Sun *-*-* 05:00:00"
+# Weekly structure check of the repository (works on append-only targets too).
+restic_check_on_calendar: "Sat *-*-* 05:00:00"
 
 # SQLite databases are copied consistently into this directory, which is backed
 # up, because the live files may change while restic reads them.
@@ -72,4 +74,10 @@ restic_prune_job:
   randomized_delay: 30m
 
 # Picked up by the systemd_timers role, which removes timers no longer listed.
-restic_timer_jobs: "{{ [restic_backup_job] + ([restic_prune_job] if restic_prune_enabled else []) }}"
+restic_check_job:
+  name: backup-check
+  description: Check the backup repository
+  command: /usr/local/sbin/sovereign-backup check
+  on_calendar: "{{ restic_check_on_calendar }}"
+  randomized_delay: 30m
+restic_timer_jobs: "{{ [restic_backup_job, restic_check_job] + ([restic_prune_job] if restic_prune_enabled else []) }}"
