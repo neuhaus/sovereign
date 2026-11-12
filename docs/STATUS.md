@@ -7,11 +7,25 @@ The plan itself, with the decisions worked in, is [PLAN.md](PLAN.md).
 Last update: Phases 0-5 complete, including password reset, multiple mail domains
 and append-only backups, plus the `openssh` role (key logins only), the
 `timesyncd` role (`ntp_servers`) and `docs/ROLES.md`. Since then, Phase 5.5
-(operational readiness, from the review in [KRITIK.md](KRITIK.md)) steps 1-3
-have been written but are **neither committed nor tested yet**; the results
-below are from before that work.
+(operational readiness, from the review in [KRITIK.md](KRITIK.md)) steps 1-3.
 
-Results at `e97fe72`:
+Results of Phase 5.5 (2026-11-12), Debian 13 only so far:
+
+| Run | Debian 13 | Testing |
+|---|---|---|
+| Local, containers, at `fb3d033` | 276 passed, 2 failed | converge fails: no `restic` package |
+| Local, `mail` as a 2 GiB VM, at `fb3d033` | 276 passed, 2 failed | converge fails: no `restic` package |
+| Local, VM, follow-up fixes: converge, idempotence, 32 affected tests | passed | not run |
+
+The two failures (password service on Debian 13's argon2-cffi, migration guide)
+are fixed in the follow-up commits, as are three findings from reviewing the
+Phase 5.5 code (wrong passwords answered late, pending revocations survive an
+interrupted run, backup attempt recorded on every exit). The migration test also
+found that the final `sync -1 -R` without sync state silently skips mail that
+arrived on both sides after the switch; the guide now keeps the state. A full run
+on both releases is still due; Testing waits for restic (below).
+
+Results at `e97fe72`, before Phase 5.5:
 
 | Run | Debian 13 | Testing |
 |---|---|---|
@@ -19,10 +33,10 @@ Results at `e97fe72`:
 | Local, containers | 263 passed | 263 passed |
 | Local, `mail` as a 2 GiB VM | 263 passed | **262 passed, 1 failed** |
 
-Converge and idempotence passed in all of these. The failure is open, see below.
-Not yet run on a real server. Next: a full test run of the Phase 5.5 work
-(containers and VM, both releases), then steps 4 and 5 of Phase 5.5, then
-Phase 6 (split setup).
+Converge and idempotence passed in all of these. The VM failure on Testing has a
+fix, still to be tested on Testing (see below).
+Not yet run on a real server. Next: a full test run on both releases, then steps
+4 and 5 of Phase 5.5, then Phase 6 (split setup).
 
 ## Phases
 
@@ -41,7 +55,7 @@ Phase 6 (split setup).
 | 3 GitOps admin | done | `maildb` mirrors the inventory, keeps passwords changed by users, a new hash resets; several mail domains |
 | 4 Extended tests | done | DANE, disaster recovery onto an empty instance, weekly run against Testing |
 | 5 Documentation | done | README, `docs/ADMINISTRATION.md`, `docs/INSTALL.md`, `docs/BACKUP.md`, `docs/MIGRATION.md`, `docs/ROLES.md` |
-| 5.5 Operational readiness | in progress | steps 1-3 written, untested: migration guide fixed (`imapc:` location, `sync -1 -R`) and `test_migration.py`; backups fail on incomplete snapshots, export last attempt/exit code, weekly `restic check`; one revocation path ending Dovecot sessions; quotas enforced (`quota_mb`); certbot hook fails on failed reloads; SSH key and `sshd -T` checks; DANE over MTA-STS only if every MX has usable TLSA; password service `sovereign-passwd` instead of Roundcube writing the DB; CI pinned (`constraints.txt`, `.github/collections-ci.yml`). Open: step 4 (pilot on Debian 13), step 5 (optional roles) |
+| 5.5 Operational readiness | in progress | steps 1-3 done, tested on Debian 13: migration guide fixed (`imapc:` location, `sync -1 -R`) and `test_migration.py`; backups fail on incomplete snapshots, export last attempt/exit code, weekly `restic check`; one revocation path ending Dovecot sessions; quotas enforced (`quota_mb`); certbot hook fails on failed reloads; SSH key and `sshd -T` checks; DANE over MTA-STS only if every MX has usable TLSA; password service `sovereign-passwd` instead of Roundcube writing the DB; CI pinned (`constraints.txt`, `.github/collections-ci.yml`). Open: step 4 (pilot on Debian 13), step 5 (optional roles) |
 | 6 Split setup | open | VPS gateway + home server over WireGuard; first check what the OpenVZ VPS allows (DNAT) |
 
 ## Roles in `site.yml` (in order)
@@ -110,6 +124,15 @@ unattended_upgrades, systemd_timers, node_exporter.
 - Molecule expands `$VAR` in its configuration: dollar signs in hashes are
   doubled in `.config/molecule/config.yml`; `molecule list` in CI catches it.
 
+- Dovecot 2.4 requires `dovecot_config_version` as the first setting of every
+  file it reads, also one that only adds to `!include /etc/dovecot/dovecot.conf`.
+- `doveadm backup` copies the source's UIDVALIDITY and UID numbering. Without
+  sync state, a later `sync -1 -R` sees the same UID on both sides with
+  different messages and keeps the local one; the remote message is silently
+  skipped, exit code 0. With the state from the first run (`-s`) both are kept.
+- argon2-cffi 21.1 (Debian 13) has `exceptions.InvalidHash`, renamed
+  `InvalidHashError` in 23.1.
+
 - Roundcube's database layer sets `journal_mode = WAL` on every SQLite
   connection. Pointed at the mail database, it would break Postfix and Dovecot,
   so the old password driver used plain PDO. Since Phase 5.5 the driver only
@@ -142,6 +165,12 @@ unattended_upgrades, systemd_timers, node_exporter.
   it silently ignores it and reports "Missing playbook".
 
 ## Open
+
+- **restic is not in Debian Testing** (November 2026): 0.19.1-1 is blocked from
+  migrating ("unsatisfiable Built-Using on golang-github-cespare-xxhash"), so
+  the Testing scenario fails at converge and none of its tests run. A Debian
+  packaging matter, not ours; Testing is an early warning only. Options: wait,
+  or install restic from unstable in the Testing scenario's prepare (test only).
 
 - Roundcube connects from loopback, so all webmail logins share one Dovecot auth
   penalty: a wrong password can delay other users' webmail logins by up to 15
