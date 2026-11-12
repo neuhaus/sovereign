@@ -1,12 +1,20 @@
 #!/bin/sh
 # {{ ansible_managed }}
 # certbot deploy hook: runs after each successful renewal and makes the
-# services pick up the new certificate.
+# services pick up the new certificate. Exits non-zero if a reload fails, so
+# certbot reports it; the timestamp is only written when all reloads worked.
 set -u
+failed=""
 for service in {{ certbot_reload_services | join(' ') }}; do
     if systemctl --quiet is-active "$service"; then
-        systemctl reload "$service" || echo "certbot deploy hook: reloading $service failed" >&2
+        if ! systemctl reload "$service"; then
+            echo "certbot deploy hook: reloading $service failed" >&2
+            failed="$failed $service"
+        fi
     fi
 done
+if [ -n "$failed" ]; then
+    exit 1
+fi
 mkdir -p /run/sovereign
 date --iso-8601=seconds > /run/sovereign/certbot-deployed

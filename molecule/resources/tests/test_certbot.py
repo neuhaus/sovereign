@@ -86,3 +86,23 @@ def test_forced_renewal_keeps_key_and_runs_deploy_hook(host, live):
     assert host.check_output("openssl x509 -in %s/cert.pem -noout -serial", live) != serial_before
     assert host.file("/run/sovereign/certbot-deployed").exists
     assert host.service("nginx").is_running
+
+
+def test_deploy_hook_reports_a_failed_reload(host):
+    # A systemctl that fails every reload, ahead of the real one in PATH.
+    host.check_output(
+        "mkdir -p /tmp/fakebin && printf '%%s\\n' '#!/bin/sh' "
+        "'[ \"$1\" = reload ] && exit 1' 'exec /usr/bin/systemctl \"$@\"' > %s && chmod 0755 %s",
+        "/tmp/fakebin/systemctl",
+        "/tmp/fakebin/systemctl",
+    )
+    try:
+        host.run("rm -f /run/sovereign/certbot-deployed")
+        result = host.run("PATH=/tmp/fakebin:$PATH /etc/letsencrypt/renewal-hooks/deploy/sovereign-reload")
+        assert result.rc != 0
+        assert "reloading" in result.stderr
+        assert not host.file("/run/sovereign/certbot-deployed").exists
+    finally:
+        host.run("rm -rf /tmp/fakebin")
+    assert host.run("/etc/letsencrypt/renewal-hooks/deploy/sovereign-reload").rc == 0
+    assert host.file("/run/sovereign/certbot-deployed").exists
