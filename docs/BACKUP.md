@@ -63,7 +63,7 @@ Metrics for node exporter, because nothing else tells you when backups stop:
 | Metric | Meaning |
 |---|---|
 | `sovereign_backup_last_success_timestamp_seconds` | last complete backup; alert if it is older than about 26 hours |
-| `sovereign_backup_last_attempt_timestamp_seconds`, `sovereign_backup_last_exit_code` | last attempt and its restic exit code (3: files could not be read, snapshot incomplete) |
+| `sovereign_backup_last_attempt_timestamp_seconds`, `sovereign_backup_last_exit_code` | last attempt and its restic exit code (3: files could not be read, snapshot incomplete; 1 also when the script failed before restic ran, such as a failed database copy) |
 | `sovereign_backup_check_last_success_timestamp_seconds`, `sovereign_backup_check_last_exit_code` | weekly `restic check`; alert if older than about 8 days or non-zero |
 
 The weekly check reads the repository's structure, not all data. To read part of the data back as well, run `restic check --read-data-subset 5%` now and then; it downloads that share of the repository.

@@ -120,6 +120,26 @@ def test_incomplete_backup_is_a_failure(host, backup):
     assert metrics(host)["sovereign_backup_last_exit_code"] == "0"
 
 
+def test_failure_before_restic_is_recorded(host, backup):
+    # A database copy that fails stops the script before restic runs; the
+    # attempt must still be recorded, not the previous run's exit code 0.
+    wrapper = "/usr/local/bin/sqlite3"
+    assert not host.file(wrapper).exists
+    before = metrics(host)
+    host.check_output("printf '%%s\\n' '#!/bin/sh' 'exit 1' > %s && chmod 0755 %s", wrapper, wrapper)
+    try:
+        assert host.run("systemctl start sovereign-backup.service").rc != 0
+        exported = metrics(host)
+        assert exported["sovereign_backup_last_exit_code"] == "1"
+        assert exported["sovereign_backup_last_attempt_timestamp_seconds"] != before["sovereign_backup_last_attempt_timestamp_seconds"]
+        assert exported["sovereign_backup_last_success_timestamp_seconds"] == before["sovereign_backup_last_success_timestamp_seconds"]
+    finally:
+        host.run("rm -f %s", wrapper)
+        host.run("systemctl reset-failed sovereign-backup.service")
+    assert host.run("systemctl start sovereign-backup.service").rc == 0
+    assert metrics(host)["sovereign_backup_last_exit_code"] == "0"
+
+
 def test_repository_check(host, backup):
     result = host.run("systemctl start sovereign-backup-check.service")
     assert result.rc == 0, host.check_output("journalctl -n 40 -u sovereign-backup-check.service --no-pager")

@@ -48,6 +48,16 @@ init)
     esac
     ;;
 run)
+    # The attempt is recorded however the script ends: a failing database copy
+    # stops it (set -e) before restic runs, and must not leave the exit code of
+    # an earlier run in place. Until restic has run, the code is 1.
+    rc=1
+    record_attempt() {
+        write_metrics sovereign_backup_attempt \
+            "sovereign_backup_last_attempt_timestamp_seconds ${now:-$(date +%s)}" \
+            "sovereign_backup_last_exit_code $rc"
+    }
+    trap record_attempt EXIT
 {% for database in restic_databases %}
     sqlite3 -bail -cmd ".timeout 30000" {{ database.path | quote }} ".backup {{ restic_staging_dir }}/{{ database.name }}.new"
     mv {{ restic_staging_dir }}/{{ database.name }}.new {{ restic_staging_dir }}/{{ database.name }}
@@ -65,9 +75,6 @@ run)
         backup || rc=$?
     fi
     now=$(date +%s)
-    write_metrics sovereign_backup_attempt \
-        "sovereign_backup_last_attempt_timestamp_seconds $now" \
-        "sovereign_backup_last_exit_code $rc"
     [ "$rc" -eq 0 ] || exit "$rc"
     write_metrics sovereign_backup \
         "sovereign_backup_last_success_timestamp_seconds $now"
