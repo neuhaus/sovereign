@@ -33,8 +33,10 @@ def boxes(host, sovtest_vars):
     )
     # The connection settings, written as the guide says.
     host.check_output("install -m 0600 /dev/null %s", CONF)
+    # Dovecot 2.4: dovecot_config_version must be the file's first setting.
+    versions = host.check_output("grep -m2 '^dovecot_[a-z]*_version' /etc/dovecot/dovecot.conf")
     settings = (
-        "!include /etc/dovecot/dovecot.conf\n\n"
+        f"{versions}\n!include /etc/dovecot/dovecot.conf\n\n"
         f"imapc_host = mail.{domain}\nimapc_port = 993\nimapc_ssl = imaps\n"
         f"imapc_user = {old}\nimapc_password = {OLD_PASSWORD}\n"
     )
@@ -60,8 +62,11 @@ def fetch(host, user, mailbox, subject, field):
 
 
 def migrate(host, new, command):
-    result = host.run("doveadm -c %s %s -u %s imapc:", CONF, command, new)
+    # command holds several words ("sync -1 -R"): not quoted as one argument.
+    result = host.run(f"doveadm -c %s {command} -u %s imapc:", CONF, new)
     assert result.rc == 0, result.stdout + result.stderr
+    # With -s, dsync prints the new sync state as the last line.
+    return result.stdout.strip().splitlines()[-1] if "-s" in command.split() else None
 
 
 def test_copy_then_final_sync(host, boxes):
@@ -75,7 +80,8 @@ def test_copy_then_final_sync(host, boxes):
     host.check_output("doveadm mailbox create -s -u %s Projects", old)
     save(host, old, "Projects", archived, "body in a folder")
 
-    migrate(host, new, "backup -R")
+    state = migrate(host, new, "backup -R -s ''")
+    assert state
     assert "body of the first message" in fetch(host, new, "INBOX", first, "text")
     flags = fetch(host, new, "INBOX", first, "flags")
     assert "\\Seen" in flags and "\\Flagged" in flags
@@ -83,10 +89,12 @@ def test_copy_then_final_sync(host, boxes):
     assert "Projects" in host.check_output("doveadm mailbox list -s -u %s", new).split()
 
     # After the switch: the old server still gets one message, the new server
-    # already gets one of its own. The final sync must keep both.
+    # already gets one of its own. Both get the same UID, since backup copied
+    # the numbering; the final sync must keep both (without the state, dsync
+    # silently skips the old server's message).
     save(host, old, "INBOX", later, "late on the old server")
     save(host, new, "INBOX", arrived, "already on the new server")
-    migrate(host, new, "sync -1 -R")
+    migrate(host, new, f"sync -1 -R -s {state}")
     assert "late on the old server" in fetch(host, new, "INBOX", later, "text")
     assert "already on the new server" in fetch(host, new, "INBOX", arrived, "text")
     # One-way: the old mailbox is not changed.
