@@ -13,8 +13,9 @@ The current state of the rebuild, decisions that go beyond the modernization pla
 Tests run with [Molecule](https://ansible.readthedocs.io/projects/molecule/) in [incus](https://linuxcontainers.org/incus/) system containers. Each scenario starts four containers on its own bridge: `mail` (the system under test), `dns` (authoritative mock DNS for `sovereign.test`), `pebble` (a local ACME server) and `recovery` (empty until the disaster recovery test restores the backup onto it).
 
 ```sh
-pip install -r test-requirements.txt
-ansible-galaxy collection install -r requirements.yml
+# The exact versions CI uses (Python 3.14):
+pip install -c constraints.txt -r test-requirements.txt
+ansible-galaxy collection install -r .github/collections-ci.yml
 
 yamllint --strict .
 ansible-lint

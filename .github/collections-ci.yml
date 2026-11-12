@@ -1,0 +1,6 @@
+---
+# Exact collection versions for CI (see constraints.txt). requirements.yml keeps
+# the minimum for deployments.
+collections:
+  - name: community.general
+    version: "14.0.0"
