@@ -20,6 +20,7 @@ import json
 import re
 import sqlite3
 import sys
+import time
 
 import argon2
 
@@ -28,6 +29,13 @@ PREFIX = "{ARGON2ID}"
 HASHER = argon2.PasswordHasher(time_cost=3, memory_cost=65536, parallelism=1)
 ADDRESS = re.compile(r"[^@\s]{1,64}@[^@\s]{1,253}")
 MAX_REQUEST = 8192
+# Answer a wrong current password only after this delay. Whoever controls the
+# socket could otherwise guess passwords at hashing speed, without Dovecot's
+# auth penalty or fail2ban; with at most 4 connections (the socket unit) this
+# allows about 2 guesses per second.
+FAILURE_DELAY = 2
+# argon2-cffi 23.1 renamed InvalidHash; Debian 13 ships 21.1.
+INVALID_HASH = getattr(argon2.exceptions, "InvalidHashError", None) or argon2.exceptions.InvalidHash
 
 
 def reply(ok, error=None, log=None):
@@ -60,7 +68,8 @@ def main(database, minimum_length):
             if not stored.startswith(PREFIX):
                 raise argon2.exceptions.VerificationError
             HASHER.verify(stored[len(PREFIX) :], current)
-        except (argon2.exceptions.VerificationError, argon2.exceptions.InvalidHashError):
+        except (argon2.exceptions.VerificationError, INVALID_HASH):
+            time.sleep(FAILURE_DELAY)
             return reply(False, "wrong password", f"{user}: current password wrong")
         # Only if nothing changed it meanwhile (an admin reset, say).
         changed = db.execute(

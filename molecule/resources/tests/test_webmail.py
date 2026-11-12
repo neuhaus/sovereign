@@ -211,10 +211,13 @@ def test_password_service_needs_the_current_password(host, ctx):
     bob = ctx["carol"].replace("carol@", "bob@")
     stored = "SELECT password FROM mailboxes WHERE localpart = 'bob'"
     before = host.check_output("sqlite3 %s %s", DB, stored)
+    started = time.monotonic()
     reply = host.check_output(
         "runuser -u roundcube -- python3 -c %s %s %s %s", PASSWD_REQUEST, bob, "guessed-password", "sovtest-taken-over"
     )
     assert json.loads(reply) == {"ok": False, "error": "wrong password"}
+    # A wrong password is answered late, against guessing through the socket.
+    assert time.monotonic() - started >= 2
     # An app password is not the current password either.
     reply = host.check_output(
         "runuser -u roundcube -- python3 -c %s %s %s %s", PASSWD_REQUEST, ctx["carol"], CAROL_APP, "sovtest-taken-over"
