@@ -36,6 +36,17 @@ def test_system_resolver_uses_unbound(host):
     assert not host.service("systemd-resolved").is_running
 
 
+def test_resolved_sockets_masked(host):
+    # Since systemd 262 (Testing): an enabled socket would try to start the masked
+    # service and fail. Debian 13 has no such sockets, so the list may be empty.
+    # Exit code 1 when nothing matches, as on Debian 13.
+    listing = host.run("systemctl list-unit-files --no-legend --plain --type=socket 'systemd-resolved*'").stdout
+    for line in listing.splitlines():
+        unit, state = line.split()[:2]
+        assert state == "masked", line
+        assert host.run(f"systemctl is-failed --quiet {unit}").rc != 0, unit
+
+
 def test_stub_zone_resolves_test_domain(host, sovtest_vars):
     domain = sovtest_vars["sovtest_domain"]
     mail_ip = sovtest_vars["sovtest_ips"]["mail"]

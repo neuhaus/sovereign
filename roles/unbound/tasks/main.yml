@@ -45,6 +45,25 @@
     - name: Gather service facts
       ansible.builtin.service_facts:
 
+    # Since systemd 262, resolved also has sockets (varlink, monitor). Left enabled,
+    # they try to start the masked service on the first connection and fail, which
+    # leaves the system degraded. They go first, so nothing can start it meanwhile.
+    - name: Find systemd-resolved's sockets
+      ansible.builtin.command:
+        argv: [systemctl, list-unit-files, --no-legend, --plain, --type=socket, "systemd-resolved*"]
+      register: unbound_resolved_sockets
+      changed_when: false
+      failed_when: false
+      check_mode: false
+
+    - name: Disable systemd-resolved's sockets
+      ansible.builtin.systemd_service:
+        name: "{{ item }}"
+        state: stopped
+        enabled: false
+        masked: true
+      loop: "{{ unbound_resolved_sockets.stdout_lines | map('split') | map('first') | list }}"
+
     # resolved would otherwise keep managing /etc/resolv.conf.
     - name: Disable systemd-resolved
       ansible.builtin.systemd_service:
@@ -53,6 +72,21 @@
         enabled: false
         masked: true
       when: "'systemd-resolved.service' in ansible_facts.services"
+
+    # A server set up with an earlier version of this role may still show a failed
+    # socket; masking doesn't clear that.
+    - name: Clear failures of systemd-resolved's units
+      ansible.builtin.shell: |
+        set -e
+        if systemctl is-failed --quiet {{ item | quote }}; then
+          systemctl reset-failed {{ item | quote }}
+          echo reset
+        fi
+      args:
+        executable: /bin/bash
+      changed_when: "'reset' in unbound_reset.stdout"
+      register: unbound_reset
+      loop: "{{ unbound_resolved_sockets.stdout_lines | map('split') | map('first') | list + ['systemd-resolved.service'] }}"
 
     - name: Check /etc/resolv.conf
       ansible.builtin.stat:
