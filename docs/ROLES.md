@@ -48,6 +48,8 @@ A catch for sites with basic auth: `return` runs before the access phase, so `re
 
 `--reuse-key` keeps the private key across renewals, because the DANE TLSA record (`3 1 1`) pins it. Rotating the key is therefore a deliberate step. A changed list of names reissues the certificate with the same key.
 
+The deploy hook reloads the services that use the certificate. It fails if a reload fails, so certbot reports it, and only then writes `/run/sovereign/certbot-deployed`: a new certificate on disk and services actually using it are different things.
+
 One certificate covers all names and all domains. That is simple and needs no per-domain configuration in Postfix and Dovecot, but its public name list shows which domains share a server. It uses HTTP-01 through nginx, so the names must resolve before the first run.
 
 ## maildb
@@ -56,9 +58,13 @@ SQLite, with no database server: one file to back up, and no credentials to mana
 
 Users change their password in Roundcube, so the role cannot simply compare hashes. It stores the hash last taken from the inventory (`inventory_password`) and compares that. A changed hash there means an admin reset, which applies once, so no flag has to be removed afterwards. The rejected alternative was a `reset_password: true` flag, which overwrites the user's password on every run until someone removes it.
 
+**Revoking access ends open sessions.** A database change alone only stops new logins, so the role compares the database with the inventory before syncing and the dovecot role kicks every mailbox whose password is reset, that is removed or disabled, or that loses or changes an app password. Sessions can't be matched to the app password they used, so that last case ends all of the mailbox's sessions.
+
 **The rollback journal is required, not WAL.** In WAL mode every reader must be able to write the `-shm` file, and Postfix and Dovecot only read. Dovecot's defaults (read-write, WAL) would switch the file to WAL, so it is explicitly opened read-only.
 
-**The database has its own directory,** owned by Roundcube's PHP user, because SQLite creates its journal next to the database. It must not be `/var/lib/sovereign`: root runs `sync.sql` from there, and write access to that directory would be a way to root.
+**The database has its own directory,** owned by the password service's user (`maildb-passwd`), because SQLite creates its journal next to the database. It must not be `/var/lib/sovereign`: root runs `sync.sql` from there, and write access to that directory would be a way to root.
+
+**Password changes go through a small service,** `sovereign-passwd`, not through Roundcube. Roundcube's password plugin sends the user name, the current and the new password over a local socket only Roundcube's PHP user can open. The service, started by systemd per connection as `maildb-passwd` with no network and a read-only system, checks the current main password against the stored hash and updates only that row, and only if it is still the hash it checked. So a compromised Roundcube can change only passwords it already knows, instead of every account, forwarding and alias. App passwords don't count as the current password. It uses plain SQLite with the rollback journal; Roundcube's database layer would have switched the file to WAL.
 
 Schema changes need a Dovecot restart: Dovecot 2.4.1 fails the first query after one on its open connection.
 
@@ -66,7 +72,7 @@ Schema changes need a Dovecot restart: Dovecot 2.4.1 fails the first query after
 
 Inbound, it serves the policy for each domain. The `_mta-sts` id is derived from the policy's content, so it changes exactly when the policy does.
 
-Outbound, `postfix-mta-sts-resolver` alone is not enough, because it answers any domain with a policy with `secure`, which overrides Postfix's DANE verification, against RFC 8461. So a small socketmap (`sovereign-tls-policy`) sits in front. Authenticated MX and TLSA records: no entry, so Postfix verifies DANE. Otherwise: the resolver's answer. DNS failures or a resolver that is down: a temporary error, so mail is deferred instead of being sent with weaker protection.
+Outbound, `postfix-mta-sts-resolver` alone is not enough, because it answers any domain with a policy with `secure`, which overrides Postfix's DANE verification, against RFC 8461. So a small socketmap (`sovereign-tls-policy`) sits in front. An authenticated MX set where every host has an authenticated TLSA record Postfix can use: no entry, so Postfix verifies DANE. Otherwise, including mixed MX sets: the resolver's answer. In a mixed set Postfix's DANE level would fall back to unauthenticated TLS for the hosts without TLSA, so the domain's MTA-STS policy, where it has one, is the stronger protection; the DANE hosts are then checked against the policy's names instead. More than 10 MX hosts count as mixed. DNS failures or a resolver that is down: a temporary error, so mail is deferred instead of being sent with weaker protection.
 
 ## autoconfig
 
@@ -108,9 +114,9 @@ Shared collections are created by Ansible and access follows the inventory. Remo
 
 **Roundcube is not trusted.** Mandatory basic auth covers the whole site, so nothing reaches its PHP code without it, and those credentials are not passed to PHP. Nginx runs only the front controller and serves only static files of listed types. Only SHA-512 crypt hashes are accepted for basic auth, because nginx checks them in its event loop on every request, including each static file, and a slow hash would stall it.
 
-PHP runs as its own user, since that user can write the mail database and nginx's `www-data` should not. The tradeoff, accepted because users in general are trusted: a code execution bug in Roundcube behind basic auth could still rewrite password hashes and aliases. A helper that can only change one password would narrow this, at the cost of more code.
+PHP runs as its own user, not nginx's `www-data`, and only that user may use the password service. Roundcube has no access to the mail database: password changes go through `sovereign-passwd` (see maildb), which checks the current password. Before that, Roundcube wrote the database directly, so a code execution bug in it could have changed every account; an external review in November 2026 led to the change.
 
-**Its own password driver,** because Roundcube's database layer sets `journal_mode = WAL` on every SQLite connection, which would break Postfix and Dovecot. Roundcube's own database, by contrast, is left to Debian's dbconfig-common, which also upgrades its schema. Debian's cron job does nothing under systemd, hence the timer.
+**Its own password driver,** a few lines that pass the request to the password service. Roundcube's own database, by contrast, is left to Debian's dbconfig-common, which also upgrades its schema. Debian's cron job does nothing under systemd, hence the timer.
 
 A wrong password in the webmail can delay other users' webmail logins, because they all reach Dovecot from loopback. This is accepted, since only holders of the basic auth credentials get that far.
 
@@ -118,7 +124,7 @@ A wrong password in the webmail can delay other users' webmail logins, because t
 
 Required by default, so that no server runs without backups by accident. SQLite databases are copied with `.backup` first, because the live files may change while restic reads them. The certificate's key is included because DANE depends on it. The search index is left out: Dovecot rebuilds it, and it holds terms in plaintext.
 
-The repository is only created when restic reports there is none (exit code 10), never on a network or password error. Exit code 3, some files could not be read, counts as success with a warning, because on a live Maildir these are files Dovecot just renamed.
+The repository is only created when restic reports there is none (exit code 10), never on a network or password error. Only exit code 0 counts as success. Exit code 3 means some files could not be read and the snapshot is incomplete; on a live Maildir the usual cause is a message renamed by a flag change, so the backup runs once more, and fails if that doesn't complete either. Metrics record the last attempt and its exit code separately from the last success, and a weekly `restic check` has its own. An earlier version counted exit code 3 as success, which could hide permission or read errors indefinitely.
 
 By default root on the server can delete the backups, since pruning needs that right. `restic_prune_enabled: false` with an append-only target prevents it, but needs a second machine, so it is not the default.
 

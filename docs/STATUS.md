@@ -5,8 +5,11 @@ Working notes for the Debian 13 / Testing rebuild of Sovereign (branch
 The plan itself, with the decisions worked in, is [PLAN.md](PLAN.md).
 
 Last update: Phases 0-5 complete, including password reset, multiple mail domains
-and append-only backups. Added since: the `openssh` role (key logins only), the
-`timesyncd` role (`ntp_servers`) and `docs/ROLES.md`.
+and append-only backups, plus the `openssh` role (key logins only), the
+`timesyncd` role (`ntp_servers`) and `docs/ROLES.md`. Since then, Phase 5.5
+(operational readiness, from the review in [KRITIK.md](KRITIK.md)) steps 1-3
+have been written but are **neither committed nor tested yet**; the results
+below are from before that work.
 
 Results at `e97fe72`:
 
@@ -17,7 +20,9 @@ Results at `e97fe72`:
 | Local, `mail` as a 2 GiB VM | 263 passed | **262 passed, 1 failed** |
 
 Converge and idempotence passed in all of these. The failure is open, see below.
-Not yet run on a real server. Next: fix that failure, then Phase 6 (split setup).
+Not yet run on a real server. Next: a full test run of the Phase 5.5 work
+(containers and VM, both releases), then steps 4 and 5 of Phase 5.5, then
+Phase 6 (split setup).
 
 ## Phases
 
@@ -36,6 +41,7 @@ Not yet run on a real server. Next: fix that failure, then Phase 6 (split setup)
 | 3 GitOps admin | done | `maildb` mirrors the inventory, keeps passwords changed by users, a new hash resets; several mail domains |
 | 4 Extended tests | done | DANE, disaster recovery onto an empty instance, weekly run against Testing |
 | 5 Documentation | done | README, `docs/ADMINISTRATION.md`, `docs/INSTALL.md`, `docs/BACKUP.md`, `docs/MIGRATION.md`, `docs/ROLES.md` |
+| 5.5 Operational readiness | in progress | steps 1-3 written, untested: migration guide fixed (`imapc:` location, `sync -1 -R`) and `test_migration.py`; backups fail on incomplete snapshots, export last attempt/exit code, weekly `restic check`; one revocation path ending Dovecot sessions; quotas enforced (`quota_mb`); certbot hook fails on failed reloads; SSH key and `sshd -T` checks; DANE over MTA-STS only if every MX has usable TLSA; password service `sovereign-passwd` instead of Roundcube writing the DB; CI pinned (`constraints.txt`, `.github/collections-ci.yml`). Open: step 4 (pilot on Debian 13), step 5 (optional roles) |
 | 6 Split setup | open | VPS gateway + home server over WireGuard; first check what the OpenVZ VPS allows (DNAT) |
 
 ## Roles in `site.yml` (in order)
@@ -58,13 +64,16 @@ unattended_upgrades, systemd_timers, node_exporter.
 | Rspamd web UI | localhost only (SSH tunnel), Debian's default password `q1` replaced by a random hash | |
 | Outbound MTA-STS | small socketmap shim: DANE (TLSA via DNSSEC) first, else postfix-mta-sts-resolver | the resolver alone lets MTA-STS override DANE (against RFC 8461) |
 | User admin | Ansible mirrors `group_vars`; users change their own main password in Roundcube; a new hash in the inventory resets it once and kicks open sessions; app passwords admin-only | no flag to clean up afterwards |
-| Webmail exposure | mandatory HTTP basic auth in front of Roundcube; the credentials are not passed to PHP | Roundcube is not trusted, users in general are; it keeps direct write access to the mail database |
+| Webmail exposure | mandatory HTTP basic auth in front of Roundcube; the credentials are not passed to PHP | Roundcube is not trusted, users in general are |
+| Password changes | Roundcube asks `sovereign-passwd` (socket-activated, `/run/sovereign-passwd.sock`, group `sovereign-passwd`), which checks the current password and writes only that account's hash | a compromised Roundcube can no longer rewrite every account; Roundcube has no database access (Phase 5.5) |
+| Quotas | Dovecot quota plugin, `quota_storage_size` from `quota_mb` in the userdb, `imap_quota` | the option existed but was not enforced |
+| Supported releases | Debian 13 is the target; Testing is an early warning, fixed but not release-blocking | Phase 5.5 |
 | Basic auth hashes | SHA-512 crypt only | nginx verifies in its event loop on every request; slow hashes would stall it |
 | App passwords in webmail | refused from loopback by Dovecot | Roundcube accepts the session password as "current password"; an app password must not be enough to change the main password |
 | Radicale auth | own plugin `sovereign_radicale_auth` | see findings; neither the built-in type nor `python3-radicale-dovecot-auth` is usable |
 | Dovecot auth socket | `/run/dovecot/auth-external`, group `dovecot-auth`, mode 0660 | services join the group; Dovecot need not know them, and no role order depends on it |
 | Backups required | the restic role fails without repository and password | no server without backups by accident; to be revisited with the optional roles |
-| Mail database location | `/var/lib/sovereign/maildb/`, owned by the `roundcube` user | the rollback journal needs a writable directory, and root runs scripts from `/var/lib/sovereign` |
+| Mail database location | `/var/lib/sovereign/maildb/`, owned by the password service's user `maildb-passwd` (previously `roundcube`, removed from the database group on upgrade) | the rollback journal needs a writable directory, and root runs scripts from `/var/lib/sovereign` |
 | Target hardware | 2 GB RAM | FTS indexer limited to one process |
 
 ## Findings worth knowing
@@ -103,7 +112,8 @@ unattended_upgrades, systemd_timers, node_exporter.
 
 - Roundcube's database layer sets `journal_mode = WAL` on every SQLite
   connection. Pointed at the mail database, it would break Postfix and Dovecot,
-  so the password driver (`sovereign.php`) uses plain PDO.
+  so the old password driver used plain PDO. Since Phase 5.5 the driver only
+  talks to `sovereign-passwd` and never opens the database.
 - Dovecot's auth penalty is keyed by client address. Radicale's logins carry
   none, so they share one penalty: a single wrong password delayed every user's
   next login by up to 15 seconds, past the 5 second timeout of Radicale's
@@ -143,9 +153,10 @@ unattended_upgrades, systemd_timers, node_exporter.
 - **Failing on Testing as a VM:** `test_no_failed_units` finds the system degraded,
   because `systemd-resolved-varlink.socket` failed: "Unit systemd-resolved.service
   is masked". systemd 262 in Testing adds this socket and
-  `systemd-resolved-monitor.socket`; the `unbound` role masks only the service.
-  Debian 13 (systemd 257) has no varlink socket. Likely fix, not yet made or tested:
-  mask the sockets too. CI doesn't catch this, as it runs containers only. A VM run
+  `systemd-resolved-monitor.socket`; the `unbound` role masked only the service.
+  Debian 13 (systemd 257) has no varlink socket. Fix written, not yet tested: the
+  role now masks all `systemd-resolved*` sockets and clears earlier failures.
+  CI doesn't catch this, as it runs containers only. A VM run
   of the older code, before `openssh` and `timesyncd`, passed earlier the same day;
   why is not known.
 - Nothing has run on a real server yet, only in containers and VMs. To check there: LUKS

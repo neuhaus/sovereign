@@ -66,7 +66,7 @@ Strip the repository of all non-mail components to reduce maintenance overhead.
 
 ## Phase 2: Core Architecture Modernization (Role by Role)
 
-Replace legacy components with modern, BSI TR-03108 compliant alternatives using native Debian 13 packages. Each step ships together with its tests. TLS everywhere: TLS 1.2/1.3, ECDHE with AES-GCM, curves P-256/P-384 (BSI TR-02102-2).
+Replace legacy components with modern alternatives using native Debian 13 packages, with the TLS configuration based on BSI TR-03108 (not a certified or fully mapped compliance). Each step ships together with its tests. TLS everywhere: TLS 1.2/1.3, ECDHE with AES-GCM, curves P-256/P-384 (BSI TR-02102-2).
 
 Implementation order: 2.1, 2.2, the certificate part of 2.5, 2.3, 2.4, rest of 2.5, 2.6, 2.7 (Postfix and Dovecot need the certificate from the start). Current state per phase: [STATUS.md](STATUS.md).
 
@@ -91,7 +91,7 @@ Implementation order: 2.1, 2.2, the certificate part of 2.5, 2.3, 2.4, rest of 2
 
 ### 2.3 Mail Transport (Postfix & Dovecot 2.4)
 
-- **Mail database: SQLite** (one file, no database server; Ansible and, for password changes, Roundcube are the only writers). Postfix reads it through proxymap, Dovecot read-only; rollback journal (WAL would require write access for every reader).
+- **Mail database: SQLite** (one file, no database server; Ansible and, for password changes, a small password service are the only writers). Postfix reads it through proxymap, Dovecot read-only; rollback journal (WAL would require write access for every reader).
 - Dovecot authentication with **Argon2id** password hashes. **App-Specific Passwords** start with an 8-character id (`PhOnE001-...`): Dovecot 2.4 fails a passdb lookup that returns several rows, so the app password row is selected by that prefix and its hash verified as usual.
 - Enforce **TLS 1.2/1.3**, **DANE** (outbound) and strong ECDHE ciphers in Postfix and Dovecot.
 - **At-rest encryption:** Dovecot mail_crypt with a globally generated EC keypair encrypting all Maildir message files. *(Dovecot's index cache and the FTS index keep header fields and terms in plaintext; their protection relies on LUKS.)*
@@ -170,7 +170,7 @@ Implementation order: 2.1, 2.2, the certificate part of 2.5, 2.3, 2.4, rest of 2
 - Domains, mailboxes, App-Specific Passwords and aliases **precisely mirror** the code state, including removal of entries no longer defined; manual changes in the database are reverted on the next run.
 - **Password self-service:** users change their own main password in Roundcube (password plugin). Ansible sets the initial password hash when it creates a mailbox and does not touch it afterwards; everything else (domains, mailboxes, aliases, App-Specific Passwords) stays exactly mirrored. Roundcube therefore gets write access to the mail database (only it and Ansible write); App-Specific Passwords remain admin-managed via `group_vars`.
 - **Password reset:** a new hash for a mailbox in the inventory replaces the password once, also one the user changed, and disconnects the user's open sessions. The database remembers the hash last applied (`inventory_password`), which is what the role compares; there is no flag to remove afterwards.
-- The database has its own directory, owned by Roundcube's PHP user, for the rollback journal; root's scripts stay in a directory only root can write. A small password driver opens the database with plain PDO, because Roundcube's database layer switches SQLite databases to WAL on connect.
+- The database has its own directory, owned by the password service's user, for the rollback journal; root's scripts stay in a directory only root can write. Roundcube's password driver asks that service over a local socket (Phase 5.5); earlier, it wrote the database itself.
 
 **Tests:** adding, changing and removing users, aliases and App-Specific Passwords in the variables is reflected in the database; a password changed by the user survives the next Ansible run; a new hash in the inventory resets it and ends open sessions; a second run reports no changes; a removed user can no longer log in.
 
@@ -231,6 +231,32 @@ Rewrite the README and Wiki to reflect the modernized, bare-metal deployment str
   - **Cutover:** lower DNS TTLs in advance, run a final delta sync, then switch MX, autodiscover and related records and update the DKIM and TLSA records.
 - **Developer guide:** running the Molecule scenarios locally with incus, and how the GitHub Actions workflow is structured.
 - **Role design documents:** one chapter per role in `docs/ROLES.md`.
+
+---
+
+## Phase 5.5: Operational Readiness
+
+Comes from an external review (November 2026). Converge, idempotence and mail flow are not enough. Migration, failures, revoking access and restoring must hold up too, before the first real deployment and before Phase 6 adds a tunnel, NAT and a second site. **Debian 13 is the supported target.** Testing stays in CI as an early warning: its failures are fixed, but they don't block a release.
+
+Steps in order:
+
+1. **Data safety**
+   - **Migration guide:** select imapc only through the `imapc:` location, never with a global `mail_driver`, which would switch the local mailbox too. Use `backup -R` only for the first copy and `sync -1 -R` afterwards: once the new server has received mail, `backup` would delete it. Credentials go in a temporary, root-only configuration file, not on the command line.
+   - **Migration test:** a Molecule test with an "old" IMAP server. First copy, then new mail on both sides, then the final sync. Check content, flags, folders and subscriptions, and that nothing that arrived on the new side is lost.
+   - **Backups:** only exit code 0 counts as success. Also export the last attempt and its result, so an incomplete backup raises an alarm instead of looking fine. Add a regular `restic check`, and document the recovery point (daily backup: up to about a day of changes lost).
+   - **Revoking access:** one path for removing or disabling a mailbox, resetting a password and removing an app password. Each ends the mailbox's open Dovecot sessions; sessions can't be matched to the app password they used, so a removed app password ends all of them. Roundcube sessions follow, since Roundcube logs in to IMAP for each request. Test with an open IMAP connection.
+2. **Promises the configuration makes**
+   - **Quotas:** enforce `quota_mb` with Dovecot's quota plugin (count and size, a warning to the user, a clear refusal at the limit) and test it, or remove the option.
+   - **Certificates:** the certbot deploy hook fails when a reload fails, and the deploy timestamp records only successful reloads. Issuing a certificate and the services using it are separate facts, with separate checks.
+   - **SSH:** besides `authorized_keys` not being empty, `ssh-keygen -l` must accept at least one key in it, and the effective configuration (`sshd -T`) is checked after the change. A real login with the admin's key stays a test (it needs the private key), and the install guide asks for one from a second terminal before the session is closed.
+3. **Security boundaries**
+   - **DANE vs. MTA-STS:** decide per MX, not per domain. MTA-STS is skipped only if every MX that Postfix may use has usable TLSA records; with mixed MX sets the MTA-STS policy applies. Test mixed MX sets, an MX outage, unusable TLSA records, DNS errors and an expired policy. Document what happens in each case.
+   - **Roundcube's write access:** a small local service changes passwords instead. It checks the current password itself and can only change the password of the account it was asked for, so Roundcube needs no write access to the mail database. Until then the documentation states the risk plainly: a compromised Roundcube can take over every account. Basic auth stays as an extra hurdle.
+4. **Pilot on Debian 13:** reboot, unattended upgrades, alarms, a restore. Measure memory peaks under concurrent load (IMAP logins, PHP, full-text indexing, backup) rather than looking at free memory after a test run. Ship example alert rules for the mail queue, disk space, inodes, certificate expiry and backup failures. A repeatable VM check for boot, resolver, time sync and restarts.
+5. **Optional roles** (`roundcube`, `radicale`, `restic`), including removal of what is already installed. "No restic" must be an explicit statement that backups happen elsewhere, so that a server without backups still can't happen by accident.
+6. Then Phase 6.
+
+**Tooling:** CI uses a fixed combination of Python, Ansible and collections, so that test runs stay comparable. The documentation says "TLS configuration based on BSI TR-03108", not "compliant", until there is a mapping of its requirements to the implementation and tests.
 
 ---
 
@@ -336,9 +362,11 @@ To settle when this is built:
 | Role design documents | one chapter per role in `docs/ROLES.md` instead of one file per role |
 | Multiple domains | one server, one mail host, one certificate; per domain: mailboxes, aliases, DKIM key, `mta-sts`, `autoconfig` and `autodiscover` sites |
 | Split setup | optional; WireGuard from home to a small VPS, DNAT preserving client addresses, PROXY protocol only as a fallback (Phase 6) |
+| Supported releases | Debian 13 is the target; Testing is an early warning in CI, fixed but not release-blocking (Phase 5.5) |
+| Order after Phase 5 | operational readiness (Phase 5.5) before the split setup |
 | Backup deletion | a compromised server can delete backups by default; `restic_prune_enabled: false` with an append-only target prevents it |
 | Backups required | the restic role fails without repository and password |
 | Password reset | a changed hash in the inventory applies once, via the stored `inventory_password`; open sessions are kicked |
-| Webmail exposure | Roundcube is not trusted: mandatory HTTP basic auth in front of it; users in general are trusted, so Roundcube keeps direct write access to the mail database |
+| Webmail exposure | Roundcube is not trusted: mandatory HTTP basic auth in front of it; users in general are trusted, password changes go through a narrow service that checks the current password, so Roundcube has no access to the mail database (Phase 5.5) |
 | Basic auth hashes | SHA-512 crypt only: nginx verifies on every request in its event loop, slow hashes would stall it |
 | Radicale authentication | own small plugin instead of the built-in `dovecot` type or `python3-radicale-dovecot-auth`: `no-penalty`, one connection id per thread, correct Dovecot 2.4 handshake |
