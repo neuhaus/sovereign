@@ -111,6 +111,14 @@ def test_node_exporter_sandboxed(host, sovtest_vars):
     assert any(a.startswith(sovtest_vars["sovtest_ips"]["dns"] + "/") for a in allowed), allowed
 
 
+def test_node_exporter_collects_without_crashing(host):
+    # The system call filter once killed it on the first scrape (adjtimex,
+    # timex collector), and systemd's restarts hid it between tests.
+    text = metrics(host)
+    assert 'node_scrape_collector_success{collector="timex"} 1' in text
+    assert host.check_output("systemctl show -p NRestarts --value prometheus-node-exporter") == "0"
+
+
 def test_node_exporter_reports_the_real_disk(host):
     # The sandbox must not replace a mount point: the exporter would then
     # report the replacement's free space and the disk alerts would be wrong.

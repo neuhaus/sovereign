@@ -12,6 +12,14 @@ testinfra_hosts = ["mail"]
 # nftables
 
 
+def test_no_service_killed_by_its_system_call_filter(host):
+    # A sandbox's SystemCallFilter kills a service that makes a call outside
+    # it (SIGSYS); systemd restarts it, which can hide the problem. The kernel
+    # logs each kill as an audit record of type 1326.
+    kills = host.run("journalctl -k -b --no-pager -o cat | grep 'type=1326'").stdout.strip()
+    assert not kills, kills
+
+
 def test_nftables_active(host):
     service = host.service("nftables")
     assert service.is_enabled

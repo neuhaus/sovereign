@@ -17,7 +17,11 @@ ProtectKernelTunables=yes
 ProtectKernelModules=yes
 ProtectKernelLogs=yes
 ProtectControlGroups=yes
-ProtectClock=yes
+# The timex collector reads the clock's sync state with adjtimex(), which
+# ProtectClock blocks and the @system-service filter kills the exporter for.
+# Without capabilities (no CAP_SYS_TIME) it can't change the clock anyway,
+# and PrivateDevices keeps the hardware clock out of reach.
+ProtectClock=no
 ProtectHostname=yes
 RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK
 RestrictNamespaces=yes
@@ -27,7 +31,7 @@ LockPersonality=yes
 MemoryDenyWriteExecute=yes
 RemoveIPC=yes
 SystemCallArchitectures=native
-SystemCallFilter=@system-service
+SystemCallFilter=@system-service adjtimex
 # A second layer next to the firewall: systemd itself drops every packet
 # from or to other addresses than loopback and the monitoring hosts, so
 # 9100 stays closed to others even with the nftables rules flushed.
