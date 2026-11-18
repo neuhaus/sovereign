@@ -154,6 +154,12 @@ def test_unattended_upgrades_enabled(host):
     assert 'APT::Periodic::Unattended-Upgrade "1";' in config
 
 
+def test_failed_upgrades_are_mailed(host):
+    config = host.check_output("apt-config dump Unattended-Upgrade")
+    assert 'Unattended-Upgrade::Mail "root";' in config
+    assert 'Unattended-Upgrade::MailReport "only-on-error";' in config
+
+
 def test_unattended_upgrades_dry_run(host):
     result = host.run("unattended-upgrade --dry-run")
     assert result.rc == 0, result.stderr

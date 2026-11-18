@@ -186,7 +186,7 @@ A disaster recovery restores first and then runs the playbook. In the other orde
 
 ## unattended_upgrades
 
-Security updates, on Debian 13 also for packages from backports, as postsrsd is one. Automatic reboots are opt-in, because a server with an encrypted disk then waits for a remote unlock.
+Security updates, on Debian 13 also for packages from backports, as postsrsd is one. Automatic reboots are opt-in, because a server with an encrypted disk then waits for a remote unlock. A failed upgrade is mailed to `root`, which reaches the postmaster; successful ones only go to the journal.
 
 **Security support status.** `sovereign-support-status` runs weekly and once at setup. It asks `check-support-status` (debian-security-support) which installed packages Debian's security team no longer fully supports, lists them in the journal and exports the counts per type (ended, early end, limited). It removes nothing. `check-support-status` always exits 0, so the script reads its output. `debsecan` is not used: it lists every open CVE, far too many to act on. What the check can't see: Go programs (restic, prometheus-node-exporter) are only rebuilt in point releases, because Debian's list names the `golang-*` libraries rather than the programs built from them, and postsrsd from `trixie-backports` is outside the security team's support altogether.
 

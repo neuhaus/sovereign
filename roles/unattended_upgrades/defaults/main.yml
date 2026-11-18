@@ -5,6 +5,11 @@
 unattended_upgrades_automatic_reboot: false
 unattended_upgrades_automatic_reboot_time: "04:00"
 
+# Who gets a mail about upgrades, and when: "only-on-error", "on-change" or
+# "always". root's mail goes to the postmaster.
+unattended_upgrades_mail: root
+unattended_upgrades_mail_report: only-on-error
+
 # Remove kernels and dependencies that are no longer needed.
 unattended_upgrades_remove_unused: true
 
