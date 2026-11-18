@@ -114,6 +114,7 @@ More documentation
 - [docs/BACKUP.md](docs/BACKUP.md): backups and disaster recovery
 - [docs/MIGRATION.md](docs/MIGRATION.md): moving from a legacy Sovereign server
 - [docs/ROLES.md](docs/ROLES.md): how each role works and why
+- [docs/BSI-TR-03108.md](docs/BSI-TR-03108.md): requirements of BSI TR-03108 (secure email transport) and how far Sovereign meets them
 - [CONTRIBUTING.md](CONTRIBUTING.md): development and tests
 
 Questions and feedback on Matrix: [#sovereign:ping.de](https://matrix.to/#/%23sovereign:ping.de).

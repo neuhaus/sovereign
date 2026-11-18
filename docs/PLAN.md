@@ -258,7 +258,7 @@ Steps in order:
 5. **Optional roles** (`roundcube`, `radicale`, `restic`), including removal of what is already installed. "No restic" must be an explicit statement that backups happen elsewhere, so that a server without backups still can't happen by accident.
 6. Then Phase 6.
 
-**Tooling:** CI uses a fixed combination of Python, Ansible and collections, so that test runs stay comparable. The documentation says "TLS configuration based on BSI TR-03108", not "compliant", until there is a mapping of its requirements to the implementation and tests.
+**Tooling:** CI uses a fixed combination of Python, Ansible and collections, so that test runs stay comparable. The documentation says "TLS configuration based on BSI TR-03108", not "compliant", until every requirement is met and tested; the mapping and the open points are in [BSI-TR-03108.md](BSI-TR-03108.md).
 
 ---
 
