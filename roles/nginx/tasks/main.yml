@@ -108,11 +108,30 @@
     state: link
   notify: Nginx configuration changed
 
+- name: Create the nginx drop-in directory
+  ansible.builtin.file:
+    path: /etc/systemd/system/nginx.service.d
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Sandbox nginx
+  ansible.builtin.template:
+    src: hardening.conf.j2
+    dest: /etc/systemd/system/nginx.service.d/sovereign-hardening.conf
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Nginx sandbox changed
+
+# daemon_reload: the sandbox drop-in must be loaded before the first start.
 - name: Enable nginx
   ansible.builtin.systemd_service:
     name: nginx
     state: started
     enabled: true
+    daemon_reload: true
 
 # certbot needs the challenge location before it requests a certificate.
 - name: Apply nginx configuration

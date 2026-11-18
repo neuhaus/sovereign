@@ -11,3 +11,12 @@
     name: nginx
     state: reloaded
   listen: Nginx configuration changed
+
+# A reload keeps the old mount namespace: changes to the sandbox, and paths it
+# mounts that appear later (/var/lib/roundcube), need a restart.
+- name: Restart nginx
+  ansible.builtin.systemd_service:
+    name: nginx
+    state: restarted
+    daemon_reload: true
+  listen: Nginx sandbox changed

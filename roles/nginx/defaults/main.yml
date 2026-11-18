@@ -27,3 +27,16 @@ nginx_wellknown_dir: /var/www/sovereign-wellknown
 nginx_security_contact: "mailto:postmaster@{{ (mail_domains | default([certbot_domains[0]]))[0] }}"
 nginx_security_languages: en
 nginx_security_hosts: "{{ certbot_domains }}"
+
+# Hidden from nginx (systemd InaccessiblePaths). Under /var it sees only the
+# webroots, its logs and temp files anyway (an allowlist); in /etc these are
+# other services' secrets. It keeps /etc/letsencrypt for its TLS keys and
+# /etc/nginx for its configuration. Missing paths are skipped.
+nginx_inaccessible_paths:
+  - /etc/ssl/private
+  - /etc/dovecot
+  - /etc/restic
+  - /etc/postsrsd.secret
+  - /etc/roundcube
+  - /etc/radicale
+  - /etc/rspamd

@@ -56,6 +56,8 @@ Web logins reach Dovecot from loopback, where the dovecot jail cannot ban anyone
 
 Only the shared parts: port 80 for ACME challenges and redirects, and a TLS snippet with the same policy as Postfix and Dovecot. Roles that need a site add it themselves and notify this role's handler.
 
+Runs in a systemd sandbox (`nginx.service.d/sovereign-hardening.conf`): the master keeps only the capabilities for ports 80 and 443, starting and signalling its workers, its temp directories and reopening the logs; no new privileges, no writable executable memory, a system call filter. Under `/var` it sees only the webroots (read-only), its logs and temp files, so mail, the mail database, calendars and Roundcube's sessions don't exist for it; in `/etc` other services' secrets are hidden (`nginx_inaccessible_paths`). It keeps `/etc/letsencrypt`: the workers are forked from the master and can't get a narrower view, so the TLS keys stay readable to them. A reload keeps the old mount namespace, so sandbox changes, and the Roundcube install that adds `/var/lib/roundcube`, restart nginx.
+
 A catch for sites with basic auth: `return` runs before the access phase, so `return 404` answers without asking for credentials. Such sites use `try_files` instead.
 
 ## certbot
@@ -117,6 +119,8 @@ postsrsd 2 comes from `trixie-backports` on Debian 13, whose own 1.x has a diffe
 ## dovecot
 
 Dovecot 2.4's configuration is largely incompatible with 2.3, so the whole configuration is one file written against the 2.4 documentation, and Debian's `conf.d` is not used. Dovecot 2.4 tools use the configuration of the running Dovecot unless given `-c`, which matters during a run.
+
+Runs in a systemd sandbox (`dovecot.service.d/sovereign-hardening.conf`) on top of its own separation: the login processes, which handle everything sent before a login, already run as `dovenull` in an empty chroot. The master keeps only the capabilities to bind its ports, start processes as `vmail`, `dovecot` and `dovenull`, chroot, set socket owners, signal its children, and create its sockets in Postfix's private spool directory; no new privileges, no writable executable memory, a system call filter. Under `/var` it sees only the mail, its state, that spool directory and the mail database (an allowlist); in `/etc` other services' secrets are hidden (`dovecot_inaccessible_paths`). What no sandbox changes: all mailboxes belong to `vmail`, so a process taken over after a login can read every mailbox.
 
 **App passwords** start with an 8-character id that selects the row, because 2.4 fails a passdb lookup returning several rows. They are refused from loopback, which in practice means from Roundcube: its session password counts as the current password when changing the main password, and an app password must not be enough for that.
 

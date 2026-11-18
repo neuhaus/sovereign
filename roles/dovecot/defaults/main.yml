@@ -69,3 +69,16 @@ dovecot_managesieve_external: "{{ managesieve_external | default(false) }}"
 # workers than CPU cores add no throughput, only memory: further logins wait
 # in Dovecot's queue instead.
 dovecot_auth_worker_limit: 4
+
+# Hidden from Dovecot (systemd InaccessiblePaths). Under /var it sees only
+# the mail, its state, Postfix's private socket directory and the mail
+# database anyway (an allowlist); in /etc these are other services' secrets.
+# It keeps /etc/dovecot and /etc/letsencrypt. Missing paths are skipped.
+dovecot_inaccessible_paths:
+  - /etc/ssl/private
+  - /etc/restic
+  - /etc/postsrsd.secret
+  - /etc/roundcube
+  - /etc/nginx
+  - /etc/radicale
+  - /etc/rspamd

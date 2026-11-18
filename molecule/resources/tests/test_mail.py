@@ -62,7 +62,7 @@ def test_pebble_issuance_root_trusted(host):
 
 # Sandboxing of the services that handle untrusted input (rspamd, PHP-FPM).
 # That they still work is covered by the mail flow, spam and webmail tests.
-@pytest.mark.parametrize("unit", ["rspamd.service", "php*-fpm.service", "postfix@-.service"])
+@pytest.mark.parametrize("unit", ["rspamd.service", "php*-fpm.service", "postfix@-.service", "nginx.service", "dovecot.service"])
 def test_service_sandboxed(host, unit):
     name = host.check_output("systemctl list-units --type=service --all --no-legend --plain %s | cut -d' ' -f1", unit).split()[0]
     props = dict(
@@ -103,12 +103,16 @@ OTHER_SERVICE = {
     "rspamd.service": ["/var/lib/php/sessions", "/var/lib/roundcube-sovereign", "/etc/roundcube"],
     "php*-fpm.service": ["/var/lib/rspamd", "/etc/rspamd"],
     "postfix@-.service": ["/var/lib/rspamd", "/var/lib/php/sessions", "/etc/roundcube", "/var/lib/sovereign/mobileconfig"],
+    "nginx.service": ["/var/lib/rspamd", "/var/lib/php/sessions", "/var/lib/roundcube-sovereign", "/var/lib/dbconfig-common", "/etc/roundcube"],
+    "dovecot.service": ["/var/lib/rspamd", "/var/lib/php/sessions", "/var/lib/roundcube-sovereign", "/etc/roundcube", "/etc/rspamd"],
 }
 # What a service legitimately reads: Postfix the mail database and its TLS keys.
-NEEDED = {"postfix@-.service": ["/var/lib/sovereign", "/etc/letsencrypt"]}
+NEEDED = {"postfix@-.service": ["/var/lib/sovereign", "/etc/letsencrypt"], "nginx.service": ["/etc/nginx", "/etc/letsencrypt"],
+    "dovecot.service": ["/var/vmail", "/var/lib/sovereign", "/etc/letsencrypt", "/etc/dovecot"],
+}
 
 
-@pytest.mark.parametrize("unit", ["rspamd.service", "php*-fpm.service", "postfix@-.service"])
+@pytest.mark.parametrize("unit", ["rspamd.service", "php*-fpm.service", "postfix@-.service", "nginx.service", "dovecot.service"])
 def test_service_cannot_see_secrets(host, unit):
     # Inside the service's mount namespace each path is either gone (the
     # empty /var) or an empty node with mode 0, so even its root master sees
@@ -164,3 +168,38 @@ def test_auth_workers_are_limited(host, peer, sovtest_vars):
     counts = [int(n) for n in host.file("/var/tmp/sovtest-authcount").content_string.split()]
     # "auth" is the auth master plus its workers.
     assert counts and max(counts) - 1 <= 4, counts
+
+
+def test_nginx_capabilities(host):
+    caps = host.check_output("systemctl show -p CapabilityBoundingSet --value nginx.service").split()
+    assert sorted(caps) == sorted(
+        ["cap_net_bind_service", "cap_setuid", "cap_setgid", "cap_chown", "cap_dac_override", "cap_kill"]
+    ), caps
+
+
+def test_nginx_sees_the_webmail_after_a_fresh_install(host):
+    # The sandbox mounts /var/lib/roundcube only if it existed when nginx
+    # started; the Roundcube role restarts nginx after installing it.
+    pid = host.check_output("systemctl show -p MainPID --value nginx.service")
+    assert host.run("nsenter -t %s -m -- test -f /var/lib/roundcube/public_html/index.php", pid).rc == 0
+
+
+def test_dovecot_capabilities(host):
+    caps = host.check_output("systemctl show -p CapabilityBoundingSet --value dovecot.service").split()
+    assert sorted(caps) == sorted(
+        ["cap_net_bind_service", "cap_setuid", "cap_setgid", "cap_sys_chroot", "cap_chown", "cap_dac_override", "cap_kill"]
+    ), caps
+
+
+def test_dovecot_login_processes_stay_chrooted(host):
+    # They handle everything sent before a login: dovenull, in an empty chroot.
+    host.run("(sleep 8 | openssl s_client -quiet -connect 127.0.0.1:993 >/dev/null 2>&1 &)")
+    for _ in range(10):
+        pids = host.run("pgrep -x imap-login").stdout.split()
+        if pids:
+            break
+        time.sleep(0.5)
+    assert pids, "no imap-login process"
+    for pid in pids:
+        assert host.check_output("ps -o user= -p %s", pid) == "dovenull"
+        assert host.check_output("readlink /proc/%s/root", pid).endswith("/run/dovecot/login")

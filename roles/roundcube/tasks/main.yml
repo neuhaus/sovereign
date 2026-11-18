@@ -28,6 +28,8 @@
     install_recommends: false
     update_cache: true
     cache_valid_time: 3600
+  # nginx's sandbox mounts /var/lib/roundcube only if it exists at start.
+  notify: Nginx sandbox changed
 
 - name: Create Roundcube's PHP user
   ansible.builtin.user:
