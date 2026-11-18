@@ -58,6 +58,8 @@ Other restic commands need the settings:
 
 A backup only counts as successful when restic could read every file. If some files can't be read, the script runs the backup once more (on a live server, a message whose flags changed during the backup is the usual cause); if that fails too, the job fails.
 
+**Damaged databases:** each database is copied with SQLite's online backup and the copy checked (`PRAGMA quick_check`) before it replaces the previous one. A damaged copy is dropped: the last good copy stays and is backed up with everything else, the run counts as failed (exit code 1), and the postmaster gets a mail naming the database and SQLite's message, on every run until it is fixed. Restore that database from a snapshot (see Disaster recovery for the paths), or for the mail database run the playbook against a fresh file: it rebuilds domains, mailboxes and aliases from the inventory, but passwords users changed themselves are lost.
+
 Metrics for node exporter, because nothing else tells you when backups stop:
 
 | Metric | Meaning |

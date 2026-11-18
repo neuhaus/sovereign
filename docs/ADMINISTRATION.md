@@ -142,6 +142,7 @@ The server mails `root`, which reaches the postmaster of the first domain, when 
 
 - **A reboot is pending:** a kernel or microcode update is installed but takes effect only after a reboot. Checked hourly, mailed once per update.
 - **An upgrade failed:** unattended upgrades mail only on errors.
+- **A database is damaged:** the backup's check of a database copy failed; the last good copy stays in the backups. Mailed on every backup until it is fixed, see [BACKUP.md](BACKUP.md#checking-on-backups).
 - **A TLSA record doesn't match:** the published DANE record of an MX no longer matches the certificate, so servers using DANE defer all mail to this one. Checked daily and after each new certificate, mailed once until it is fixed.
 
 Each also has a metric and an example alert (see Operations), for those with Prometheus.

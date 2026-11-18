@@ -21,6 +21,25 @@ write_metrics() {
     mv "$file.new" "$file"
 }
 
+# A database copy that fails SQLite's check: tell the postmaster. Sent on
+# every run until it is fixed; the backup fails meanwhile.
+report_damaged() {
+    local name=$1 path=$2 result=$3
+    echo "database $name ($path) is damaged; the last good copy stays: $result" >&2
+    /usr/sbin/sendmail -t <<MAIL || echo "could not mail the postmaster" >&2
+To: root
+Subject: Backup: database $name on $(hostname --fqdn) is damaged
+
+SQLite's check of a fresh copy of $path failed:
+
+$result
+
+The backup keeps the last good copy of this database and backs up
+everything else; the run counts as failed until the database is repaired or
+restored (docs/BACKUP.md). Mail and other databases are backed up as usual.
+MAIL
+}
+
 backup() {
     restic backup --one-file-system --retry-lock 30m --tag sovereign \
 {% for exclude in restic_excludes %}
@@ -58,9 +77,19 @@ run)
             "sovereign_backup_last_exit_code $rc"
     }
     trap record_attempt EXIT
+    # Each copy is checked before it replaces the previous one: a damaged
+    # database must not push the last good copy out of the backups.
+    damaged=""
 {% for database in restic_databases %}
     sqlite3 -bail -cmd ".timeout 30000" {{ database.path | quote }} ".backup {{ restic_staging_dir }}/{{ database.name }}.new"
-    mv {{ restic_staging_dir }}/{{ database.name }}.new {{ restic_staging_dir }}/{{ database.name }}
+    check=$(sqlite3 -bail {{ restic_staging_dir }}/{{ database.name }}.new "PRAGMA quick_check" 2>&1) || true
+    if [ "$check" = ok ]; then
+        mv {{ restic_staging_dir }}/{{ database.name }}.new {{ restic_staging_dir }}/{{ database.name }}
+    else
+        rm -f {{ restic_staging_dir }}/{{ database.name }}.new
+        report_damaged {{ database.name | quote }} {{ database.path | quote }} "$check"
+        damaged="$damaged {{ database.name }}"
+    fi
 {% endfor %}
     # Exit code 3: a snapshot was made, but some files could not be read, so it
     # is incomplete. On a live Maildir the usual cause is a message Dovecot
@@ -76,6 +105,11 @@ run)
     fi
     now=$(date +%s)
     [ "$rc" -eq 0 ] || exit "$rc"
+    if [ -n "$damaged" ]; then
+        echo "backed up, but with the last good copy of:$damaged" >&2
+        rc=1
+        exit 1
+    fi
     write_metrics sovereign_backup \
         "sovereign_backup_last_success_timestamp_seconds $now"
     ;;

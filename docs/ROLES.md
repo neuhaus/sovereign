@@ -178,7 +178,7 @@ A wrong password in the webmail can delay other users' webmail logins, because t
 
 ## restic
 
-Required by default, so that no server runs without backups by accident. SQLite databases are copied with `.backup` first, because the live files may change while restic reads them. The certificate's key is included because DANE depends on it. The search index is left out: Dovecot rebuilds it, and it holds terms in plaintext.
+Required by default, so that no server runs without backups by accident. SQLite databases are copied with `.backup` first, because the live files may change while restic reads them. Each copy is checked with `PRAGMA quick_check` before it replaces the previous one; a damaged one is dropped, so the last good copy stays in the backups, the run fails and the postmaster gets a mail. The certificate's key is included because DANE depends on it. The search index is left out: Dovecot rebuilds it, and it holds terms in plaintext.
 
 The repository is only created when restic reports there is none (exit code 10), never on a network or password error. Only exit code 0 counts as success. Exit code 3 means some files could not be read and the snapshot is incomplete; on a live Maildir the usual cause is a message renamed by a flag change, so the backup runs once more, and fails if that doesn't complete either. Metrics record the last attempt and its exit code separately from the last success, and a weekly `restic check` has its own. An earlier version counted exit code 3 as success, which could hide permission or read errors indefinitely.
 

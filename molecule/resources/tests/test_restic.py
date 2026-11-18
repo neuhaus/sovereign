@@ -1,5 +1,7 @@
 """Backups (restic role) into a repository on the mail instance, Phase 2.7."""
 
+import json
+import time
 import uuid
 
 import pytest
@@ -140,6 +142,46 @@ def test_failure_before_restic_is_recorded(host, backup):
         assert exported["sovereign_backup_last_exit_code"] == "1"
         assert exported["sovereign_backup_last_attempt_timestamp_seconds"] != before["sovereign_backup_last_attempt_timestamp_seconds"]
         assert exported["sovereign_backup_last_success_timestamp_seconds"] == before["sovereign_backup_last_success_timestamp_seconds"]
+    finally:
+        host.run("rm -f %s", wrapper)
+        host.run("systemctl reset-failed sovereign-backup.service")
+    assert host.run("systemctl start sovereign-backup.service").rc == 0
+    assert metrics(host)["sovereign_backup_last_exit_code"] == "0"
+
+
+def test_damaged_database_keeps_the_last_good_copy(host, backup, sovtest_vars):
+    # quick_check fails for the mail database's fresh copy (a wrapper ahead of
+    # sqlite3): the last good copy stays and is backed up with the rest, the
+    # run fails, and the postmaster (alice in Molecule) gets a mail.
+    wrapper = "/usr/local/bin/sqlite3"
+    assert not host.file(wrapper).exists
+    staged = "/var/backups/sovereign/mail.sqlite"
+    before = metrics(host)
+    staged_before = host.check_output("sha256sum %s", staged)
+    snapshots_before = len(json.loads(restic(host, "snapshots --json")))
+    host.check_output(
+        "printf '%%s\n' '#!/bin/sh' "
+        "'case \"$*\" in *mail.sqlite.new*quick_check*) echo \"Page 7: btreeInitPage() returns error code 11\"; exit 0;; esac' "
+        "'exec /usr/bin/sqlite3 \"$@\"' > %s && chmod 0755 %s",
+        wrapper,
+        wrapper,
+    )
+    alice = "alice@" + sovtest_vars["sovtest_domain"]
+    subject = "database mail.sqlite"
+    mails = lambda: host.run("doveadm search -u %s mailbox INBOX header subject %s", alice, subject).stdout.splitlines()
+    mails_before = len(mails())
+    try:
+        assert host.run("systemctl start sovereign-backup.service").rc != 0
+        exported = metrics(host)
+        assert exported["sovereign_backup_last_exit_code"] == "1"
+        assert exported["sovereign_backup_last_success_timestamp_seconds"] == before["sovereign_backup_last_success_timestamp_seconds"]
+        assert host.check_output("sha256sum %s", staged) == staged_before, "the last good copy was replaced"
+        assert len(json.loads(restic(host, "snapshots --json"))) == snapshots_before + 1, "nothing backed up"
+        for _ in range(30):
+            if len(mails()) > mails_before:
+                break
+            time.sleep(2)
+        assert len(mails()) == mails_before + 1, mails()
     finally:
         host.run("rm -f %s", wrapper)
         host.run("systemctl reset-failed sovereign-backup.service")
