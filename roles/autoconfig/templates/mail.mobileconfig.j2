@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- {{ ansible_managed }} -->
+{#
+  Apple configuration profile (iOS, iPadOS, macOS) for one mail domain.
+  No address, user name or password: the device asks for them when the
+  profile is installed, so one file serves every user of the domain. The
+  identifiers and UUIDs are derived from the domain, so installing it again
+  replaces the account instead of adding a second one.
+#}
+{% set id = (item.split('.') | reverse | join('.')) ~ '.sovereign.mail' %}
+<plist version="1.0">
+<dict>
+  <key>PayloadContent</key>
+  <array>
+    <dict>
+      <key>EmailAccountType</key>
+      <string>EmailTypeIMAP</string>
+      <key>EmailAccountDescription</key>
+      <string>{{ item }}</string>
+      <key>IncomingMailServerHostName</key>
+      <string>{{ autoconfig_mail_host }}</string>
+      <key>IncomingMailServerPortNumber</key>
+      <integer>993</integer>
+      <key>IncomingMailServerUseSSL</key>
+      <true/>
+      <key>IncomingMailServerAuthentication</key>
+      <string>EmailAuthPassword</string>
+      <key>OutgoingMailServerHostName</key>
+      <string>{{ autoconfig_mail_host }}</string>
+      <key>OutgoingMailServerPortNumber</key>
+      <integer>587</integer>
+      <key>OutgoingMailServerUseSSL</key>
+      <true/>
+      <key>OutgoingMailServerAuthentication</key>
+      <string>EmailAuthPassword</string>
+      <key>OutgoingPasswordSameAsIncomingPassword</key>
+      <true/>
+      <key>PayloadType</key>
+      <string>com.apple.mail.managed</string>
+      <key>PayloadVersion</key>
+      <integer>1</integer>
+      <key>PayloadIdentifier</key>
+      <string>{{ id }}.account</string>
+      <key>PayloadUUID</key>
+      <string>{{ (id ~ '.account') | to_uuid | upper }}</string>
+      <key>PayloadDisplayName</key>
+      <string>{{ item }}</string>
+    </dict>
+  </array>
+  <key>PayloadType</key>
+  <string>Configuration</string>
+  <key>PayloadVersion</key>
+  <integer>1</integer>
+  <key>PayloadIdentifier</key>
+  <string>{{ id }}</string>
+  <key>PayloadUUID</key>
+  <string>{{ id | to_uuid | upper }}</string>
+  <key>PayloadDisplayName</key>
+  <string>{{ item }} mail</string>
+  <key>PayloadDescription</key>
+  <string>Mail account on {{ autoconfig_mail_host }} (IMAP and SMTP over TLS).</string>
+  <key>PayloadRemovalDisallowed</key>
+  <false/>
+</dict>
+</plist>

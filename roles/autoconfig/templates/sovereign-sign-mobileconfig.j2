@@ -1,0 +1,44 @@
+#!/bin/sh
+# {{ ansible_managed }}
+# Signs the Apple configuration profiles with the server certificate, so iOS
+# and macOS show them as verified. Runs from Ansible and as a certbot deploy
+# hook. A signed file is left alone while it still carries the current profile
+# and the current certificate: signatures differ on every run, so signing
+# unconditionally would never be idempotent. Prints "signed <file>" for each
+# file it writes and removes signed files whose profile is gone.
+set -eu
+src={{ autoconfig_mobileconfig_src }}
+dst={{ autoconfig_webroot }}/mobileconfig
+live=/etc/letsencrypt/live/{{ certbot_domains[0] }}
+tmp=$(mktemp -d)
+trap 'rm -rf "$tmp"; rm -f "$dst"/.*.mobileconfig.tmp' EXIT
+
+current=$(openssl x509 -in "$live/cert.pem" -noout -fingerprint -sha256)
+
+for profile in "$src"/*.mobileconfig; do
+    [ -e "$profile" ] || continue
+    name=$(basename "$profile")
+    signed="$dst/$name"
+    if [ -f "$signed" ] \
+        && openssl cms -verify -noverify -binary -inform DER -in "$signed" \
+            -out "$tmp/content" -signer "$tmp/signer.pem" 2>/dev/null \
+        && cmp -s "$tmp/content" "$profile" \
+        && [ "$(openssl x509 -in "$tmp/signer.pem" -noout -fingerprint -sha256)" = "$current" ]; then
+        continue
+    fi
+    openssl cms -sign -binary -nodetach -outform DER -md sha256 \
+        -signer "$live/cert.pem" -inkey "$live/privkey.pem" -certfile "$live/chain.pem" \
+        -in "$profile" -out "$dst/.$name.tmp"
+    chmod 0644 "$dst/.$name.tmp"
+    # Same directory, so the rename is atomic: nginx never serves half a file.
+    mv "$dst/.$name.tmp" "$signed"
+    echo "signed $name"
+done
+
+for signed in "$dst"/*.mobileconfig; do
+    [ -e "$signed" ] || continue
+    if [ ! -e "$src/$(basename "$signed")" ]; then
+        rm -f "$signed"
+        echo "removed $(basename "$signed")"
+    fi
+done

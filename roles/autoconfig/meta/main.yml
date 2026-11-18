@@ -2,7 +2,7 @@
 galaxy_info:
   role_name: autoconfig
   author: Sovereign contributors
-  description: Mail client autoconfiguration (Thunderbird autoconfig, Outlook autodiscover)
+  description: Mail client autoconfiguration (Thunderbird autoconfig, Outlook autodiscover, Apple profiles)
   license: GPL-3.0-or-later
   min_ansible_version: "2.15"
   platforms:

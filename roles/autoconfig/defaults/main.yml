@@ -8,3 +8,11 @@ autoconfig_domains: "{{ mail_domains | default([]) }}"
 autoconfig_mail_host: "{{ certbot_domains[0] }}"
 autoconfig_display_name: "{{ autoconfig_domains[0] | default('Mail') }} mail"
 autoconfig_webroot: /var/www/autoconfig
+
+# Apple configuration profile (iOS, iPadOS, macOS) per mail domain, signed
+# with the server certificate:
+#   https://autoconfig.<domain>/mail.mobileconfig
+# Apple devices don't look it up themselves: users open the URL in Safari and
+# install the profile under Settings. Unsigned profiles live here, the signed
+# ones in the webroot.
+autoconfig_mobileconfig_src: /var/lib/sovereign/mobileconfig

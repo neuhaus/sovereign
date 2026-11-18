@@ -103,6 +103,7 @@ Mail clients mostly configure themselves through autoconfiguration. The login is
 - **Webmail:** `https://mail.example.org`, first the basic auth credentials, then the mailbox login. Users change their password under Settings.
 - **Calendars and contacts:** `https://dav.example.org`, with the mail address and password. Shared collections are at `https://dav.example.org/shared/<name>/`.
 - **Phones and other devices:** use an app password; it can be revoked on its own, and it does not work in the webmail.
+- **iPhone, iPad and Mac:** open `https://autoconfig.example.org/mail.mobileconfig` in Safari, then install the profile under Settings (on a Mac: System Settings, Profiles). It asks for the mail address and password; use an app password. Apple devices don't look up the autoconfiguration themselves.
 
 More documentation
 ------------------

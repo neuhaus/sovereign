@@ -4,6 +4,7 @@ import base64
 import json
 import os
 import pathlib
+import plistlib
 import subprocess
 import tempfile
 
@@ -104,3 +105,24 @@ def run_playbook(host, playbook, variables, extra_inventory=None, limit=None, ex
     recap = [line for line in result.stdout.splitlines() if "changed=" in line and "unreachable=" in line]
     assert recap, result.stdout[-2000:]
     return int(recap[-1].split("changed=")[1].split()[0])
+
+
+def apple_profile(host, name):
+    """Fetches https://<name>/mail.mobileconfig on the mail instance and
+    checks its signature against the system trust store (Pebble's root in
+    Molecule). Returns the content type, the profile as a dict and the SHA-256
+    fingerprint of the signing certificate. The certificate is a TLS server
+    certificate, hence -purpose any."""
+    work = "/tmp/sovtest-mobileconfig"
+    host.check_output("rm -rf %s && mkdir -p %s", work, work)
+    content_type = host.check_output(
+        "curl -fsS --resolve %s:443:127.0.0.1 -o %s/signed -w '%%{content_type}' https://%s/mail.mobileconfig",
+        name, work, name,
+    )
+    host.check_output(
+        "openssl cms -verify -binary -inform DER -purpose any -in %s/signed -signer %s/signer.pem -out %s/profile",
+        work, work, work,
+    )
+    profile = plistlib.loads(host.file(work + "/profile").content)
+    signer = host.check_output("openssl x509 -in %s/signer.pem -noout -fingerprint -sha256", work)
+    return content_type, profile, signer

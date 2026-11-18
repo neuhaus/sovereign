@@ -12,7 +12,7 @@ import xml.dom.minidom
 
 import pytest
 
-from conftest import mail_client, run_playbook
+from conftest import apple_profile, mail_client, run_playbook
 
 testinfra_hosts = ["mail"]
 
@@ -204,6 +204,16 @@ def test_autoconfig_for_the_second_domain(host, ctx):
     doc = xml.dom.minidom.parseString(https(host, "autoconfig." + ctx["second"], "/mail/config-v1.1.xml"))
     assert {n.firstChild.data for n in doc.getElementsByTagName("hostname")} == {ctx["web"]}
     assert ctx["second"] in {n.firstChild.data for n in doc.getElementsByTagName("domain")}
+
+
+def test_apple_profile_for_the_second_domain(host, ctx):
+    _, second, _ = apple_profile(host, "autoconfig." + ctx["second"])
+    _, first, _ = apple_profile(host, "autoconfig." + ctx["first"])
+    assert second["PayloadContent"][0]["IncomingMailServerHostName"] == ctx["web"]
+    assert second["PayloadContent"][0]["EmailAccountDescription"] == ctx["second"]
+    # Its own identity, so a device can hold both accounts.
+    assert second["PayloadUUID"] != first["PayloadUUID"]
+    assert second["PayloadIdentifier"] != first["PayloadIdentifier"]
 
 
 def test_autodiscover_for_the_second_domain(host, ctx):

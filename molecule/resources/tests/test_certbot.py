@@ -2,6 +2,8 @@
 
 import pytest
 
+from conftest import apple_profile
+
 testinfra_hosts = ["mail"]
 
 
@@ -74,7 +76,7 @@ def test_http_redirects_to_https(host, peer, sovtest_vars):
     assert result == "301 https://mail.%s/x?y=1" % sovtest_vars["sovtest_domain"]
 
 
-def test_forced_renewal_keeps_key_and_runs_deploy_hook(host, live):
+def test_forced_renewal_keeps_key_and_runs_deploy_hook(host, live, domains):
     key_before = spki_sha256(host, live)
     serial_before = host.check_output("openssl x509 -in %s/cert.pem -noout -serial", live)
     host.run("rm -f /run/sovereign/certbot-deployed")
@@ -86,6 +88,10 @@ def test_forced_renewal_keeps_key_and_runs_deploy_hook(host, live):
     assert host.check_output("openssl x509 -in %s/cert.pem -noout -serial", live) != serial_before
     assert host.file("/run/sovereign/certbot-deployed").exists
     assert host.service("nginx").is_running
+
+    # The Apple profiles are signed again with the renewed certificate.
+    _, _, signer = apple_profile(host, "autoconfig." + domains[0].split(".", 1)[1])
+    assert signer == host.check_output("openssl x509 -in %s/cert.pem -noout -fingerprint -sha256", live)
 
 
 def test_deploy_hook_reports_a_failed_reload(host):

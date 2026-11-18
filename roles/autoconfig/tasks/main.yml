@@ -22,6 +22,7 @@
   loop:
     - mail
     - autodiscover
+    - mobileconfig
 
 - name: Write the client configuration files
   ansible.builtin.template:
@@ -35,6 +36,60 @@
     - {src: autodiscover.xml.j2, dest: autodiscover/autodiscover.xml}
   loop_control:
     label: "{{ item.dest }}"
+
+- name: Create the directory for the unsigned Apple profiles
+  ansible.builtin.file:
+    path: "{{ autoconfig_mobileconfig_src }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Write the unsigned Apple profiles
+  ansible.builtin.template:
+    src: mail.mobileconfig.j2
+    dest: "{{ autoconfig_mobileconfig_src }}/{{ item }}.mobileconfig"
+    owner: root
+    group: root
+    mode: "0644"
+  loop: "{{ autoconfig_domains }}"
+
+- name: Find Apple profiles of removed domains
+  ansible.builtin.find:
+    paths: "{{ autoconfig_mobileconfig_src }}"
+    patterns: "*.mobileconfig"
+  register: autoconfig_profiles
+
+- name: Remove Apple profiles of removed domains
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: absent
+  loop: "{{ autoconfig_profiles.files }}"
+  loop_control:
+    label: "{{ item.path | basename }}"
+  when: (item.path | basename | regex_replace('\.mobileconfig$', '')) not in autoconfig_domains
+
+- name: Install the profile signing script
+  ansible.builtin.template:
+    src: sovereign-sign-mobileconfig.j2
+    dest: /usr/local/sbin/sovereign-sign-mobileconfig
+    owner: root
+    group: root
+    mode: "0755"
+
+# A renewed certificate gets the profiles signed again. certbot runs every
+# executable in this directory after a renewal.
+- name: Re-sign the Apple profiles after each renewal
+  ansible.builtin.file:
+    src: /usr/local/sbin/sovereign-sign-mobileconfig
+    dest: /etc/letsencrypt/renewal-hooks/deploy/sovereign-mobileconfig
+    state: link
+
+- name: Sign the Apple profiles
+  ansible.builtin.command:
+    argv: [/usr/local/sbin/sovereign-sign-mobileconfig]
+  register: autoconfig_signed
+  changed_when: autoconfig_signed.stdout | length > 0
 
 - name: Configure the autoconfig site
   ansible.builtin.template:

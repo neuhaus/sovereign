@@ -4,9 +4,12 @@ HTTPS requests run on the mail instance, which trusts the Pebble root, so
 the certificate is verified; --resolve sends them to the local nginx.
 """
 
+import uuid
 import xml.dom.minidom
 
 import pytest
+
+from conftest import apple_profile
 
 testinfra_hosts = ["mail"]
 
@@ -62,6 +65,44 @@ def test_autodiscover_answers_post(host, domain, path):
     )
     doc = xml.dom.minidom.parseString(body)
     assert {n.firstChild.data for n in doc.getElementsByTagName("Server")} == {"mail." + domain}
+
+
+def test_apple_profile_signed_with_the_server_certificate(host, domain):
+    content_type, _, signer = apple_profile(host, "autoconfig." + domain)
+    assert content_type == "application/x-apple-aspen-config"
+    current = host.check_output("openssl x509 -in /etc/letsencrypt/live/mail.%s/cert.pem -noout -fingerprint -sha256", domain)
+    assert signer == current
+
+
+def test_apple_profile_settings(host, domain):
+    _, profile, _ = apple_profile(host, "autoconfig." + domain)
+    assert profile["PayloadType"] == "Configuration"
+    assert profile["PayloadIdentifier"] == ".".join(reversed(domain.split("."))) + ".sovereign.mail"
+    [account] = profile["PayloadContent"]
+    assert account["PayloadType"] == "com.apple.mail.managed"
+    assert account["EmailAccountType"] == "EmailTypeIMAP"
+    assert (account["IncomingMailServerHostName"], account["IncomingMailServerPortNumber"]) == ("mail." + domain, 993)
+    assert (account["OutgoingMailServerHostName"], account["OutgoingMailServerPortNumber"]) == ("mail." + domain, 587)
+    assert account["IncomingMailServerUseSSL"] and account["OutgoingMailServerUseSSL"]
+    # One file for every user: the device asks for address, user and password.
+    for key in ("EmailAddress", "IncomingMailServerUsername", "OutgoingMailServerUsername", "IncomingPassword", "OutgoingPassword"):
+        assert key not in account
+    # The UUIDs identify the profile on the device: two different ones, both valid.
+    uuids = {profile["PayloadUUID"], account["PayloadUUID"]}
+    assert len(uuids) == 2 and all(uuid.UUID(u) for u in uuids)
+
+
+def test_apple_profile_only_on_autoconfig_hosts(host, domain):
+    code = host.check_output(
+        "curl -s -o /dev/null -w '%%{http_code}' --resolve autodiscover.%s:443:127.0.0.1 https://autodiscover.%s/mail.mobileconfig",
+        domain,
+        domain,
+    )
+    assert code == "404"
+
+
+def test_apple_profile_not_signed_again_without_changes(host):
+    assert host.check_output("/usr/local/sbin/sovereign-sign-mobileconfig") == ""
 
 
 def test_unknown_paths_return_404(host, domain):

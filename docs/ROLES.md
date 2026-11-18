@@ -78,6 +78,8 @@ Outbound, `postfix-mta-sts-resolver` alone is not enough, because it answers any
 
 Static files for Thunderbird's autoconfig and Outlook's autodiscover. Outlook POSTs its request, and nginx refuses POST to static files, so `error_page 405 =200` answers it with the static XML. Generating replies per user would need a script for no real gain.
 
+Apple devices get a configuration profile per domain at `https://autoconfig.<domain>/mail.mobileconfig`. They never fetch it on their own; users open it in Safari. It contains no address, user name or password, so iOS and macOS ask for them on installation and one file serves every user. Its identifiers and UUIDs come from the domain: installing it again replaces the account instead of adding a second one. It is signed with the server certificate, so the device shows it as verified. `sovereign-sign-mobileconfig` signs it from Ansible and, as a certbot deploy hook, after every renewal. A signed file stays as long as it holds the current profile and the current certificate, because signatures differ on every run. nginx maps each autoconfig host name to its file explicitly, so the `Host` header never becomes part of a path. The profile's location sets no headers of its own: an `add_header` there would drop HSTS.
+
 ## rspamd
 
 The Debian packages as they are (3.12 and 4.1), since no backport exists and one configuration works for both. Used as a milter, and mail is deferred while it is down rather than passed unfiltered.

@@ -1,5 +1,16 @@
 # {{ ansible_managed }}
-# Mail client autoconfiguration (Thunderbird autoconfig, Outlook autodiscover).
+# Mail client autoconfiguration (Thunderbird autoconfig, Outlook autodiscover,
+# Apple configuration profiles).
+
+# Signed Apple profile per autoconfig host. An explicit map, so that $host
+# never becomes part of a file path.
+map $host $sovereign_mobileconfig {
+    default "";
+{% for domain in autoconfig_domains %}
+    autoconfig.{{ domain }} {{ domain }}.mobileconfig;
+{% endfor %}
+}
+
 server {
     listen 443 ssl;
     listen [::]:443 ssl;
@@ -22,6 +33,15 @@ server {
         default_type application/xml;
         error_page 405 =200 /autodiscover/autodiscover.xml;
         try_files /autodiscover/autodiscover.xml =404;
+    }
+    location = /mail.mobileconfig {
+        if ($sovereign_mobileconfig = "") {
+            return 404;
+        }
+        # Safari recognizes the profile by this type. No add_header here: it
+        # would drop the server-level headers, HSTS among them.
+        default_type application/x-apple-aspen-config;
+        try_files /mobileconfig/$sovereign_mobileconfig =404;
     }
     location / {
         return 404;
