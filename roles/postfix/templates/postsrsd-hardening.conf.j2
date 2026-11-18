@@ -9,6 +9,8 @@
 CapabilityBoundingSet=
 CapabilityBoundingSet=CAP_SETUID CAP_SETGID CAP_SYS_CHROOT
 PrivateNetwork=yes
+# Empty first: a drop-in's list is added to Debian's, not replacing it.
+RestrictAddressFamilies=
 RestrictAddressFamilies=AF_UNIX
 ReadWritePaths=
 ReadWritePaths=/var/spool/postfix/{{ postfix_srs_socket | dirname }}
