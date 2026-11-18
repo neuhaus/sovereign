@@ -9,12 +9,12 @@ What you get
 ------------
 
 - **IMAP** with Dovecot 2.4: full-text search, mail encrypted at rest (mail_crypt), Sieve filters.
-- **SMTP** with Postfix: TLS 1.2/1.3 only, outbound DANE and MTA-STS, plus addressing, SRS for forwarded mail.
+- **SMTP** with Postfix: TLS 1.2/1.3 only, DANE (outbound, and a daily check of your own TLSA record) and MTA-STS, plus addressing, SRS for forwarded mail.
 - **Spam filtering** with Rspamd: DKIM, ARC, SPF, DMARC, Bayes learning when mail moves into or out of Junk, rejection of dangerous attachments, outbound rate limits.
 - **Webmail** with Roundcube, behind HTTP basic auth, where users also change their password and filters.
 - **Calendars and contacts** with Radicale, including shared ones.
 - **Encrypted offsite backups** with Restic, and a tested restore.
-- **Hardening and upkeep:** SSH with keys only, nftables firewall, fail2ban, a DNSSEC-validating resolver, automatic security updates, Prometheus metrics.
+- **Hardening and upkeep:** SSH with keys only, nftables firewall, fail2ban, a systemd sandbox for every service that faces the network or handles outside data, kernel hardening, a DNSSEC-validating resolver, automatic security updates, a mail to the postmaster when a reboot is pending, an upgrade fails or the TLSA record no longer matches, Prometheus metrics.
 - **Several mail domains** on one server, each with its own mailboxes and DKIM key.
 - **Administration as code:** domains, mailboxes and aliases on the server follow one YAML file exactly.
 
@@ -76,7 +76,7 @@ The TLSA hash covers the certificate's public key, which stays the same across r
     openssl x509 -in /etc/letsencrypt/live/mail.example.org/cert.pem -noout -pubkey \
       | openssl pkey -pubin -outform DER | sha256sum
 
-Rotating that key: [docs/ADMINISTRATION.md](docs/ADMINISTRATION.md#rotating-the-certificate-key).
+The server checks the published record daily and after each new certificate, and mails the postmaster if it no longer matches. Rotating that key: [docs/ADMINISTRATION.md](docs/ADMINISTRATION.md#rotating-the-certificate-key).
 
 Network ports
 -------------

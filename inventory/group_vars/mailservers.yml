@@ -35,6 +35,9 @@ mail_mailboxes:
     #     id: PhOnE001
     #     password: "{ARGON2ID}$argon2id$..."   # hash of "PhOnE001-<secret>"
 
+# postmaster@ and abuse@ are required for every domain. Mail to root, and with
+# it the server's notices (pending reboot, failed upgrade, broken TLSA record),
+# goes to the first domain's postmaster: point it at someone who reads it.
 mail_aliases:
   - source: postmaster@example.org
     destinations: [alice@example.org]
@@ -60,6 +63,11 @@ restic_password: "{{ vault_restic_password }}"
 # restic_environment:
 #   AWS_ACCESS_KEY_ID: "{{ vault_backup_key_id }}"
 #   AWS_SECRET_ACCESS_KEY: "{{ vault_backup_key }}"
+
+# --- Filters --------------------------------------------------------------------
+# ManageSieve (port 4190) is only for Roundcube, on loopback. To let mail clients
+# edit filters directly, open it to the outside:
+# managesieve_external: true
 
 # --- Time -----------------------------------------------------------------------
 # Correct time matters for certificates and DKIM. Empty: Debian's default pool.

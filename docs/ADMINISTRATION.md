@@ -60,7 +60,7 @@ To revoke one, remove its entry.
       - source: team@example.org
         destinations: [alice@example.org, bob@example.org]
 
-Every mail domain needs `postmaster@` (RFC 5321) and `abuse@` (RFC 2142, where providers and blocklist operators send complaints), as a mailbox, an alias or a catch-all; the run stops otherwise. Mail to `root` (cron, updates) goes to the `postmaster@` address of the first domain.
+Every mail domain needs `postmaster@` (RFC 5321) and `abuse@` (RFC 2142, where providers and blocklist operators send complaints), as a mailbox, an alias or a catch-all; the run stops otherwise. Mail to `root` goes to the `postmaster@` address of the first domain, and with it the server's own notices (see below): make sure someone reads it.
 
 Users may send from an alias that points to them. Forwarding to other domains works; the sender is rewritten (SRS) so that SPF still passes.
 
@@ -132,9 +132,19 @@ The certificate's key stays the same across renewals so that the TLSA record sta
 
 1. Lower the TTL of the TLSA record ahead of time, and wait for the old TTL to pass.
 2. On the server: `certbot renew --force-renewal --new-key --cert-name mail.example.org`
-3. Compute the new hash (see the README) and publish it immediately.
+3. Compute the new hash (see the README) and publish it immediately. The deploy hook runs the TLSA check right away; until the new record is published it mails the postmaster, which is expected here.
 
 Until the new record has spread, servers using DANE defer mail to you and retry later; they do not bounce it.
+
+## Mail from the server
+
+The server mails `root`, which reaches the postmaster of the first domain, when something needs a person:
+
+- **A reboot is pending:** a kernel or microcode update is installed but takes effect only after a reboot. Checked hourly, mailed once per update.
+- **An upgrade failed:** unattended upgrades mail only on errors.
+- **A TLSA record doesn't match:** the published DANE record of an MX no longer matches the certificate, so servers using DANE defer all mail to this one. Checked daily and after each new certificate, mailed once until it is fixed.
+
+Each also has a metric and an example alert (see Operations), for those with Prometheus.
 
 ## Operations
 
@@ -142,10 +152,11 @@ Until the new record has spread, servers using DANE defer mail to you and retry 
 - **Webmail CSP reports:** `journalctl -t nginx_csp` shows what the Content-Security-Policy would block. If it stays empty in normal use, set `roundcube_csp_enforce: true`.
 - **Rspamd web interface:** only on the server itself. `ssh -L 11334:127.0.0.1:11334 deploy@mail.example.org`, then open <http://127.0.0.1:11334>. The firewall lets only the user the playbook runs as (and root, `vmail`, `_rspamd`) reach the controller, so tunnel as that user; for other admins, add them to `dovecot_rspamd_controller_users`.
 - **Metrics:** node exporter on 9100, Dovecot on 9900, only from `monitoring_sources`. The node exporter enforces that list twice, in the firewall and in its own systemd sandbox, so a new monitoring host needs the playbook run, not just a firewall rule added by hand. Besides the usual node metrics: the state of every service and timer (`node_systemd_unit_state`), the Postfix queue (`sovereign_postfix_queue_*`, every 5 minutes), the certificate's expiry (`sovereign_certificate_expiry_timestamp_seconds`, written when the services have reloaded it), backups (see [BACKUP.md](BACKUP.md#checking-on-backups)) and the security support status.
-- **Alerts:** [monitoring/alerts.yml](../monitoring/alerts.yml) has example rules for your Prometheus: exporter down, failed units, mail queue, disk space and inodes, memory, certificate expiry, backups and the security support status. They are tested with `promtool` (`monitoring/alerts.test.yml`), and a Molecule test checks that every metric they use exists. Adjust the thresholds in your copy.
+- **Alerts:** [monitoring/alerts.yml](../monitoring/alerts.yml) has example rules for your Prometheus: exporter down, failed units, mail queue, disk space and inodes, memory, certificate expiry, backups, the security support status, pending reboots and DANE TLSA records. They are tested with `promtool` (`monitoring/alerts.test.yml`), and a Molecule test checks that every metric they use exists. Adjust the thresholds in your copy.
 - **Security support:** `sovereign_security_support_affected_packages{type="ended|earlyend|limited"}` counts installed packages Debian no longer fully supports; alert if any is above 0, and if `sovereign_security_support_last_run_timestamp_seconds` is older than about 8 days. `journalctl -u sovereign-support-status` names the packages. Exempt a package only with a reason, in `unattended_upgrades_support_exceptions`. Not covered by this check: restic and the node exporter (Go, updated only with point releases) and postsrsd from backports.
 - **isc-dhcp-client still installed:** the role leaves it when it is in use and says why. To switch, with console access in case the network does not come back: `apt install dhcpcd-base`, then `apt remove isc-dhcp-client` and reboot; the next run of the role finds nothing left to do.
 - **Failed logins:** `fail2ban-client banned` lists bans. Mail, calendar and SSH logins are banned after **one** failure, the webmail after three; bans start at 10 minutes and double for repeat offenders, up to a day. After changing a password, update all devices quickly, or their network gets banned. Unban with `fail2ban-client set <jail> unbanip <address>`. Postfix also allows at most 30 logins per address and minute on 465 and 587 (`postfix_auth_rate_limit`).
+- **Conffiles:** `dpkg --verify` lists the configuration files that differ from their packages. The roles keep their settings in files of their own; only `/etc/nftables.conf` (the ruleset, on purpose) and the deleted PHP-FPM `www.conf` should show up. Updates keep a changed conffile instead of asking (`--force-confold`).
 - **Updates of libraries** take effect when the services using them restart; `needrestart` does that automatically after every upgrade. Kernel and microcode updates still need a reboot; the postmaster gets a mail as soon as one is installed (checked hourly), and the alert `SovereignRebootPending` fires (`needrestart -k` shows the running and the installed kernel). Reboot, and unlock the disk remotely if it is encrypted.
 - **Automatic reboots** after kernel updates are off, because an encrypted server needs a remote unlock. Enable them with `unattended_upgrades_automatic_reboot: true`.
 - **What mail_crypt protects:** message files only. Dovecot's index cache and the search index hold header fields and search terms in plaintext. For those, rely on disk encryption.

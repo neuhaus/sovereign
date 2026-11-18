@@ -11,8 +11,11 @@ and append-only backups, plus the `openssh` role (key logins only), the
 and from step 3 the read restrictions: systemd sandboxes for every exposed
 service (see [ROLES.md](ROLES.md)), Redis on a Unix socket, loopback ports only
 for the users that need them, and security headers, `security.txt` and
-`robots.txt` for the web sites. The sandboxes since nginx are not yet in a
-full run.
+`robots.txt` for the web sites. Then kernel settings and a module blocklist
+(`kernel` role), mail to the postmaster on a pending reboot, a failed upgrade
+or a TLSA record that no longer matches, and Debian's conffiles left as
+shipped (settings in files of our own; `--force-confold` as a safety net).
+The work since the nginx sandbox is not yet in a full run.
 
 Results of Phase 5.5 (2026-11-12), Debian 13 only so far:
 
