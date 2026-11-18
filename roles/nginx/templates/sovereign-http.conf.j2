@@ -5,6 +5,8 @@ server {
     listen 80 default_server;
     listen [::]:80 default_server;
     server_name _;
+    access_log {{ nginx_log_dir }}/access.log;
+    error_log {{ nginx_log_dir }}/error.log;
 
     location ^~ /.well-known/acme-challenge/ {
         root {{ nginx_acme_webroot }};

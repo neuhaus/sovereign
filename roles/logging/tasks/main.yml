@@ -1,0 +1,33 @@
+---
+# Debian marks logrotate "important", so a normal installation has it, but
+# minimal images (such as the incus ones) leave it out, and then nothing in
+# /var/log is ever rotated.
+- name: Install logrotate
+  ansible.builtin.apt:
+    name: logrotate
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+
+- name: Enable the logrotate timer
+  ansible.builtin.systemd_service:
+    name: logrotate.timer
+    state: started
+    enabled: true
+
+- name: Create the journald drop-in directory
+  ansible.builtin.file:
+    path: /etc/systemd/journald.conf.d
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Limit the journal
+  ansible.builtin.template:
+    src: journald.conf.j2
+    dest: /etc/systemd/journald.conf.d/sovereign.conf
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Restart journald

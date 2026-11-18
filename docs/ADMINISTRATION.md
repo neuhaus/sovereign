@@ -134,6 +134,7 @@ Until the new record has spread, servers using DANE defer mail to you and retry 
 
 ## Operations
 
+- **Logs:** `journalctl` for everything (`-u postfix@-`, `-u dovecot`, `-u rspamd`, `-u fail2ban`), kept 30 days and at most 1 GB. Only the web server logs to files, in `/var/log/nginx/sovereign/`, also kept 30 days and compressed after the first day.
 - **Rspamd web interface:** only on the server itself. `ssh -L 11334:127.0.0.1:11334 deploy@mail.example.org`, then open <http://127.0.0.1:11334>.
 - **Metrics:** node exporter on 9100, Dovecot on 9900, only from `monitoring_sources`. Besides the usual node metrics: the state of every service and timer (`node_systemd_unit_state`), the Postfix queue (`sovereign_postfix_queue_*`, every 5 minutes), the certificate's expiry (`sovereign_certificate_expiry_timestamp_seconds`, written when the services have reloaded it), backups (see [BACKUP.md](BACKUP.md#checking-on-backups)) and the security support status.
 - **Alerts:** [monitoring/alerts.yml](../monitoring/alerts.yml) has example rules for your Prometheus: exporter down, failed units, mail queue, disk space and inodes, memory, certificate expiry, backups and the security support status. They are tested with `promtool` (`monitoring/alerts.test.yml`), and a Molecule test checks that every metric they use exists. Adjust the thresholds in your copy.

@@ -11,3 +11,10 @@ nginx_tls_key_file: "/etc/letsencrypt/live/{{ nginx_tls_cert_name }}/privkey.pem
 nginx_tls12_ciphers: ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-RSA-AES128-GCM-SHA256
 nginx_tls13_ciphersuites: TLS_AES_256_GCM_SHA384:TLS_AES_128_GCM_SHA256
 nginx_tls_curves: prime256v1:secp384r1
+
+# Logs of Sovereign's sites, in a directory of their own with their own
+# rotation: Debian's /etc/logrotate.d/nginx is a conffile, and editing it
+# would make unattended-upgrades skip nginx updates that change it. Access
+# logs hold client IPs, so the retention is also a privacy decision.
+nginx_log_dir: /var/log/nginx/sovereign
+nginx_log_keep_days: 30

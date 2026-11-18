@@ -20,6 +20,25 @@
     state: absent
   notify: Nginx configuration changed
 
+- name: Create the log directory
+  ansible.builtin.file:
+    path: "{{ nginx_log_dir }}"
+    state: directory
+    owner: root
+    group: adm
+    # 0755 like Debian's /var/log/nginx: the workers (www-data) reopen the
+    # files themselves after rotation and must reach them. The files stay
+    # 0640 www-data:adm.
+    mode: "0755"
+
+- name: Rotate the logs
+  ansible.builtin.template:
+    src: logrotate-sovereign-nginx.j2
+    dest: /etc/logrotate.d/sovereign-nginx
+    owner: root
+    group: root
+    mode: "0644"
+
 - name: Install the TLS settings for HTTPS sites
   ansible.builtin.template:
     src: sovereign-tls.conf.j2

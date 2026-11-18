@@ -8,6 +8,14 @@ A few rules apply throughout: Debian packages only, every handler checks the con
 
 Stops early on anything unsupported: an old ansible-core, or a system other than Debian 13 or Testing. It sets the `sovereign_debian_track` fact, which is the only place the release is determined. Testing is recognised by `/sid` in `/etc/debian_version`, which it shares with unstable, because Testing has no stable version number to test for.
 
+## logging
+
+All services log to the journal except Sovereign's nginx sites. The journal keeps 30 days and at most 1 GB (`logging_journal_max_retention`, `logging_journal_max_use`); mail logs hold addresses and client IPs, so the retention is a privacy decision as well. Rspamd and fail2ban are switched from their own files to the journal, so one setting covers them all, and `journalctl` shows Postfix, Dovecot and Rspamd lines for a message together. The journal can't compress by age: journald compresses larger entries as it writes them.
+
+logrotate is installed explicitly. Debian marks it "important", but minimal images such as the incus ones leave it out, and then nothing in `/var/log` is rotated. A test checks that every file in `/var/log` is covered by a rule, apart from a short list of exceptions with their reasons.
+
+nginx logs to `/var/log/nginx/sovereign/` with its own rule (daily, 30 days, compressed from the second day on, `nginx_log_keep_days`). Debian's `/etc/logrotate.d/nginx` stays untouched: it is a conffile, and unattended-upgrades skips packages whose changed conffile an update replaces, so editing it could quietly stop nginx security updates. Roundcube's site additionally sends its errors to syslog, where fail2ban reads them.
+
 ## openssh
 
 Key logins only, through a drop-in that sorts first, because the first value of a setting wins in `sshd_config` and this way it also beats files such as cloud-init's.

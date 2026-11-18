@@ -43,6 +43,7 @@
     - {src: composites.conf, dest: composites.conf}
     - {src: classifier-bayes.conf, dest: classifier-bayes.conf}
     - {src: antivirus.conf, dest: antivirus.conf}
+    - {src: logging.inc, dest: logging.inc}
   loop_control:
     label: "{{ item.dest }}"
   notify: Rspamd configuration changed

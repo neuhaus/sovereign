@@ -1,0 +1,5 @@
+# {{ ansible_managed }}
+[Journal]
+Storage=persistent
+MaxRetentionSec={{ logging_journal_max_retention }}
+SystemMaxUse={{ logging_journal_max_use }}

@@ -20,6 +20,20 @@
     mode: "0644"
   notify: Fail2ban configuration changed
 
+# To the journal instead of /var/log/fail2ban.log: one retention for all
+# logs (logging role).
+- name: Log to the journal
+  ansible.builtin.copy:
+    dest: /etc/fail2ban/fail2ban.d/sovereign.local
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      # Managed by Ansible (fail2ban role).
+      [DEFAULT]
+      logtarget = SYSTEMD-JOURNAL
+  notify: Fail2ban configuration changed
+
 - name: Extend the sshd filter for OpenSSH penalty drops
   ansible.builtin.copy:
     src: sshd.local

@@ -370,6 +370,6 @@ def test_moving_to_junk_trains_spam(host, client, ctx):
     # Rspamd logs every learned message with its Message-ID.
     assert wait_for(
         lambda: host.run(
-            "grep -q 'learned message as spam: %s@sovtest.example' /var/log/rspamd/rspamd.log", subject
+            "journalctl -u rspamd --no-pager -o cat | grep -q 'learned message as spam: %s@sovtest.example'", subject
         ).rc == 0
     )

@@ -1,0 +1,5 @@
+# {{ ansible_managed }}
+# To the journal instead of /var/log/rspamd/rspamd.log: one retention for all
+# mail logs (logging role). systemd = true leaves the timestamp to journald.
+type = "console";
+systemd = true;

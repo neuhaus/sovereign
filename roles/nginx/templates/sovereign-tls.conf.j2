@@ -12,4 +12,7 @@ ssl_prefer_server_ciphers off;
 ssl_session_cache shared:sovereign_tls:10m;
 ssl_session_timeout 1d;
 ssl_session_tickets off;
+# Rotated by /etc/logrotate.d/sovereign-nginx.
+access_log {{ nginx_log_dir }}/access.log;
+error_log {{ nginx_log_dir }}/error.log;
 add_header Strict-Transport-Security "max-age=63072000" always;

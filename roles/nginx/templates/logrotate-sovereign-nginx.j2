@@ -1,0 +1,17 @@
+# {{ ansible_managed }}
+# Sovereign's nginx logs: kept {{ nginx_log_keep_days }} days. delaycompress
+# leaves yesterday's file readable as text; older ones are compressed.
+{{ nginx_log_dir }}/*.log {
+    daily
+    rotate {{ nginx_log_keep_days }}
+    maxage {{ nginx_log_keep_days }}
+    missingok
+    notifempty
+    compress
+    delaycompress
+    create 0640 www-data adm
+    sharedscripts
+    postrotate
+        invoke-rc.d nginx rotate >/dev/null 2>&1 || true
+    endscript
+}

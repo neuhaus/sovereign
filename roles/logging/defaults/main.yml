@@ -1,0 +1,7 @@
+---
+# The journal holds the logs of every service except nginx (see the nginx
+# role): kept for at most this long and at most this much disk space,
+# whichever limit comes first. Mail logs contain addresses and client IPs, so
+# the retention is also a privacy decision.
+logging_journal_max_retention: 30day
+logging_journal_max_use: 1G

@@ -62,7 +62,7 @@ upstream issue #550).
 
 ## Roles in `site.yml` (in order)
 
-preflight, openssh, timesyncd, unbound, nftables, fail2ban, nginx, certbot, maildb, mta_sts,
+preflight, logging, openssh, timesyncd, unbound, nftables, fail2ban, nginx, certbot, maildb, mta_sts,
 autoconfig, rspamd, postfix, dovecot, radicale, roundcube, restic,
 unattended_upgrades, systemd_timers, node_exporter.
 

@@ -10,6 +10,7 @@
   gather_facts: true
   roles:
     - role: preflight
+    - role: logging
     - role: openssh
     - role: timesyncd
     - role: unbound
