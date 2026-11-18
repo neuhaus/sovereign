@@ -1,0 +1,39 @@
+# {{ ansible_managed }}
+# Sandbox for PHP-FPM, which runs Roundcube for anyone past the basic auth.
+# The master runs as root and switches to the pool users, hence the few
+# capabilities left. Debian's tmpfiles give /run/php to www-data; as the
+# service's RuntimeDirectory, systemd hands it to root (the service's user)
+# on every start, so the master can write its PID file and the pool sockets
+# there without CAP_DAC_OVERRIDE.
+# Roundcube sends over SMTP, not sendmail, so NoNewPrivileges is fine. No
+# MemoryDenyWriteExecute: PCRE's JIT needs writable and executable memory.
+[Service]
+RuntimeDirectory=php
+RuntimeDirectoryMode=0755
+NoNewPrivileges=yes
+CapabilityBoundingSet=CAP_SETUID CAP_SETGID CAP_CHOWN CAP_KILL
+ProtectSystem=strict
+ProtectHome=yes
+# Allowlist: an empty /var with only what PHP-FPM and Roundcube use (its code
+# links, temp directory, database, the PHP sessions and the master's log).
+# Roundcube logs to syslog, so /var/log/roundcube isn't needed.
+TemporaryFileSystem=/var:ro /srv:ro /opt:ro /mnt:ro /media:ro
+BindReadOnlyPaths=/var/lib/roundcube
+BindPaths={{ roundcube_temp_dir | dirname }} /var/lib/dbconfig-common/sqlite3/roundcube -/var/lib/php/sessions -/var/log/php{{ roundcube_php_version.stdout }}-fpm.log
+ReadWritePaths={{ roundcube_temp_dir | dirname }} /var/lib/dbconfig-common/sqlite3/roundcube -/var/lib/php/sessions -/var/log/php{{ roundcube_php_version.stdout }}-fpm.log
+InaccessiblePaths={{ roundcube_fpm_inaccessible_paths | map('regex_replace', '^', '-') | join(' ') }}
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+SystemCallArchitectures=native
+SystemCallFilter=@system-service

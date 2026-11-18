@@ -416,3 +416,16 @@ def test_failed_web_logins_get_banned(host, attacker, sovtest_vars, ctx, jail, a
         assert wait_for(banned), host.check_output("fail2ban-client status %s", jail)
     finally:
         host.run("fail2ban-client set %s unbanip %s", jail, attacker_ip)
+
+
+MAILDB = "/var/lib/sovereign/maildb/mail.sqlite"
+
+
+def test_roundcube_worker_cannot_read_mail_database(host, client, ctx):
+    # What an attacker in a compromised Roundcube would try: as the pool user,
+    # inside PHP-FPM's namespace. Workers exist only after a request.
+    client("web-assets", ctx["ip"], ctx["web"])
+    pid = host.check_output("pgrep -u roundcube -f 'php-fpm: pool roundcube' | head -1")
+    assert host.file(MAILDB).exists
+    result = host.run("nsenter -t %s -m -S roundcube -G www-data -- cat %s", pid, MAILDB)
+    assert result.rc != 0 and not result.stdout, result

@@ -10,6 +10,7 @@
   ansible.builtin.systemd_service:
     name: "php{{ roundcube_php_version.stdout }}-fpm"
     state: restarted
+    daemon_reload: true
   listen: PHP-FPM configuration changed
 
 - name: Reload systemd units

@@ -43,3 +43,23 @@ roundcube_php_memory_limit: 256M
 
 # Workers only exist while requests come in, which suits a small server.
 roundcube_php_max_children: 5
+# PHP-FPM socket for the Roundcube pool. /run/php is handed to root by the
+# sandbox drop-in (RuntimeDirectory=php), so the master needs no
+# CAP_DAC_OVERRIDE for it and its PID file there.
+roundcube_fpm_socket: /run/php/roundcube.sock
+
+# PHP-FPM sees only its own directories under /var, /srv, /opt, /mnt and /media
+# (an allowlist in the sandbox drop-in), so mail, the mail database,
+# calendars and backups are invisible to it. /etc can't be an allowlist:
+# libraries read files there nobody lists (NSS, resolver, OpenSSL, locale).
+# Its secrets are root-only anyway; these are hidden as well, against a
+# compromised root process in the service. Missing paths are skipped.
+roundcube_fpm_inaccessible_paths:
+  - /etc/letsencrypt
+  - /etc/ssl/private
+  - /etc/dovecot
+  - /etc/restic
+  - /etc/postsrsd.secret
+  - /etc/nginx
+  - /etc/radicale
+  - /etc/rspamd

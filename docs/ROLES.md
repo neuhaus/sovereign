@@ -92,6 +92,8 @@ Apple devices get a configuration profile per domain at `https://autoconfig.<dom
 
 ## rspamd
 
+Runs in a systemd sandbox (`rspamd.service.d/sovereign-hardening.conf`): read-only system, no capabilities, a system call filter. Under `/var` it sees only its state directory (an allowlist: an empty `/var` with that one directory mounted in), so mail, the mail database, calendars, backups and Roundcube's sessions are invisible to it; in `/etc` the keys and other services' secrets are hidden (`rspamd_inaccessible_paths`). Rspamd parses untrusted mail and attachments, which makes it the most exposed service after Postfix. LuaJIT needs writable and executable memory, so `MemoryDenyWriteExecute` stays off.
+
 The Debian packages as they are (3.12 and 4.1), since no backport exists and one configuration works for both. Used as a milter, and mail is deferred while it is down rather than passed unfiltered.
 
 There is no ClamAV, because it needs 1 to 1.5 GB of RAM on a server with about 2. An attachment policy rejects executables and scripts, also inside archives and with double extensions, which stops most mail-borne malware at no memory cost. A ClamAV on another host can be configured.
@@ -127,6 +129,8 @@ Shared collections are created by Ansible and access follows the inventory. Remo
 **Roundcube is not trusted.** Mandatory basic auth covers the whole site, so nothing reaches its PHP code without it, and those credentials are not passed to PHP. Nginx runs only the front controller and serves only static files of listed types. Only SHA-512 crypt hashes are accepted for basic auth, because nginx checks them in its event loop on every request, including each static file, and a slow hash would stall it.
 
 PHP runs as its own user, not nginx's `www-data`, and only that user may use the password service. Roundcube has no access to the mail database: password changes go through `sovereign-passwd` (see maildb), which checks the current password. Before that, Roundcube wrote the database directly, so a code execution bug in it could have changed every account; an external review in November 2026 led to the change.
+
+PHP-FPM runs in a systemd sandbox as well: read-only system; under `/var` it sees only Roundcube's code links, temp directory and database and the PHP sessions (an allowlist), so mail, the mail database, calendars and backups don't exist for it; in `/etc` keys and other services' secrets are hidden (`roundcube_fpm_inaccessible_paths`); and it keeps only the capabilities the master needs to switch to the pool users. Debian gives `/run/php` to `www-data`, where the master writes its PID file and the pool sockets; that would need `CAP_DAC_OVERRIDE`. As the service's `RuntimeDirectory`, systemd hands it to root on every start instead. Roundcube sends over SMTP rather than `sendmail`, so `NoNewPrivileges` doesn't get in the way.
 
 **Its own password driver,** a few lines that pass the request to the password service. Roundcube's own database, by contrast, is left to Debian's dbconfig-common, which also upgrades its schema. Its maintenance (expired sessions, caches, deleted records) runs from the package's own timers.
 

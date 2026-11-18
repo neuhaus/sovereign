@@ -1,0 +1,33 @@
+# {{ ansible_managed }}
+# Sandbox for Rspamd, which parses untrusted mail and attachments. It runs as
+# _rspamd, sees only its state directory under /var and writes only there
+# and in /run/rspamd. No MemoryDenyWriteExecute: LuaJIT needs writable and
+# executable memory.
+[Service]
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+ProtectSystem=strict
+ProtectHome=yes
+# Allowlist: an empty /var with only Rspamd's state (DKIM keys, compiled
+# maps, statistics). It logs to the journal and reaches Redis over its
+# socket in /run/redis.
+TemporaryFileSystem=/var:ro /srv:ro /opt:ro /mnt:ro /media:ro
+BindPaths=/var/lib/rspamd -/var/log/rspamd
+ReadWritePaths=/var/lib/rspamd -/var/log/rspamd
+InaccessiblePaths={{ rspamd_inaccessible_paths | map('regex_replace', '^', '-') | join(' ') }}
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+ProtectProc=invisible
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+SystemCallArchitectures=native
+SystemCallFilter=@system-service

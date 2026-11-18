@@ -55,3 +55,65 @@ def test_pebble_issuance_root_trusted(host):
     root = host.file("/usr/local/share/ca-certificates/sovereign-test-pebble-root.crt")
     assert root.exists
     assert "BEGIN CERTIFICATE" in root.content_string
+
+
+# Sandboxing of the services that handle untrusted input (rspamd, PHP-FPM).
+# That they still work is covered by the mail flow, spam and webmail tests.
+@pytest.mark.parametrize("unit", ["rspamd.service", "php*-fpm.service"])
+def test_service_sandboxed(host, unit):
+    name = host.check_output("systemctl list-units --type=service --all --no-legend --plain %s | cut -d' ' -f1", unit).split()[0]
+    props = dict(
+        line.split("=", 1)
+        for line in host.check_output(
+            "systemctl show -p ProtectSystem,NoNewPrivileges,PrivateTmp,ProtectHome,RestrictSUIDSGID,ActiveState %s", name
+        ).splitlines()
+    )
+    assert props == {
+        "ProtectSystem": "strict",
+        "NoNewPrivileges": "yes",
+        "PrivateTmp": "yes",
+        "ProtectHome": "yes",
+        "RestrictSUIDSGID": "yes",
+        "ActiveState": "active",
+    }, props
+
+
+def test_php_fpm_capabilities(host):
+    # Only what the master needs to switch to the pool users and hand the
+    # socket to nginx; no CAP_DAC_OVERRIDE (/run/php is handed to root).
+    name = host.check_output("systemctl list-units --type=service --all --no-legend --plain 'php*-fpm.service' | cut -d' ' -f1").split()[0]
+    caps = host.check_output("systemctl show -p CapabilityBoundingSet --value %s", name).split()
+    assert sorted(caps) == ["cap_chown", "cap_kill", "cap_setgid", "cap_setuid"], caps
+
+
+def service_name(host, pattern):
+    return host.check_output("systemctl list-units --type=service --all --no-legend --plain '%s' | cut -d' ' -f1" % pattern).split()[0]
+
+
+# What neither Roundcube nor Rspamd may see. Listed here, not taken from the
+# role variables, so that a gap in the sandbox can't hide in both places.
+SECRETS = [
+    "/var/vmail", "/var/lib/sovereign", "/var/lib/radicale", "/var/backups/sovereign", "/var/lib/redis",
+    "/etc/restic", "/etc/letsencrypt", "/etc/ssl/private", "/etc/dovecot", "/etc/postsrsd.secret", "/etc/nginx",
+]
+OTHER_SERVICE = {"rspamd.service": ["/var/lib/php/sessions", "/var/lib/roundcube-sovereign", "/etc/roundcube"], "php*-fpm.service": ["/var/lib/rspamd", "/etc/rspamd"]}
+
+
+@pytest.mark.parametrize("unit", ["rspamd.service", "php*-fpm.service"])
+def test_service_cannot_see_secrets(host, unit):
+    # Inside the service's mount namespace each path is either gone (the
+    # empty /var) or an empty node with mode 0, so even its root master sees
+    # nothing there.
+    pid = host.check_output("systemctl show -p MainPID --value %s", service_name(host, unit))
+    checked = []
+    for path in SECRETS + OTHER_SERVICE[unit]:
+        if not host.file(path).exists:
+            continue
+        inside = host.run(
+            "nsenter -t %s -m -- sh -c '[ -e \"$1\" ] || exit 0; stat -c %%a \"$1\"; if [ -d \"$1\" ]; then ls -A \"$1\"; else cat \"$1\"; fi' _ %s",
+            pid, path,
+        )
+        assert inside.rc == 0 and inside.stdout.splitlines() in ([], ["0"]), (path, inside.stdout[:200], inside.stderr)
+        checked.append(path)
+    # The ones that matter most must exist here, or the test proves nothing.
+    assert {"/var/vmail", "/var/lib/sovereign", "/etc/letsencrypt"} <= set(checked), checked

@@ -46,3 +46,19 @@ rspamd_clamav_servers: ""
 rspamd_redis_maxmemory: 256mb
 # Redis listens only here (no TCP); /run/redis is Redis's RuntimeDirectory.
 rspamd_redis_socket: /run/redis/redis-server.sock
+
+# Rspamd sees only its own directories under /var, /srv, /opt, /mnt and /media
+# (an allowlist in the sandbox drop-in), so mail, the mail database,
+# calendars and backups are invisible to it. /etc can't be an allowlist:
+# libraries read files there nobody lists (NSS, resolver, OpenSSL, locale).
+# Its secrets are root-only anyway; these are hidden as well, against a
+# compromised root process in the service. Missing paths are skipped.
+rspamd_inaccessible_paths:
+  - /etc/letsencrypt
+  - /etc/ssl/private
+  - /etc/dovecot
+  - /etc/restic
+  - /etc/postsrsd.secret
+  - /etc/nginx
+  - /etc/radicale
+  - /etc/roundcube

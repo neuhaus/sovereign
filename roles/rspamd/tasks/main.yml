@@ -42,6 +42,23 @@
     state: started
     enabled: true
 
+- name: Create the rspamd drop-in directory
+  ansible.builtin.file:
+    path: /etc/systemd/system/rspamd.service.d
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Sandbox rspamd
+  ansible.builtin.template:
+    src: hardening.conf.j2
+    dest: /etc/systemd/system/rspamd.service.d/sovereign-hardening.conf
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Rspamd configuration changed
+
 - name: Configure rspamd modules
   ansible.builtin.template:
     src: "{{ item.src }}.j2"
