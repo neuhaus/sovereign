@@ -48,6 +48,41 @@
     mode: "0644"
   notify: Nginx configuration changed
 
+- name: Create the directory for security.txt and robots.txt
+  ansible.builtin.file:
+    path: "{{ nginx_wellknown_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Write security.txt
+  ansible.builtin.template:
+    src: security.txt.j2
+    dest: "{{ nginx_wellknown_dir }}/security.txt"
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Write robots.txt
+  ansible.builtin.copy:
+    dest: "{{ nginx_wellknown_dir }}/robots.txt"
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      User-agent: *
+      Disallow: /
+
+- name: Install the security.txt and robots.txt locations
+  ansible.builtin.template:
+    src: sovereign-wellknown.conf.j2
+    dest: /etc/nginx/snippets/sovereign-wellknown.conf
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Nginx configuration changed
+
 - name: Install the headers for static sites
   ansible.builtin.template:
     src: sovereign-static-headers.conf.j2

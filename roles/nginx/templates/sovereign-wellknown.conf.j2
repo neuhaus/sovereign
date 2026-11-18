@@ -1,0 +1,13 @@
+# {{ ansible_managed }}
+# security.txt and robots.txt for every HTTPS site (include at server level).
+# Reachable without the webmail's basic auth.
+location = /.well-known/security.txt {
+    auth_basic off;
+    default_type text/plain;
+    alias {{ nginx_wellknown_dir }}/security.txt;
+}
+location = /robots.txt {
+    auth_basic off;
+    default_type text/plain;
+    alias {{ nginx_wellknown_dir }}/robots.txt;
+}

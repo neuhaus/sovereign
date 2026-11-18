@@ -6,6 +6,7 @@ server {
     http2 on;
     server_name {{ radicale_host }};
     include /etc/nginx/snippets/sovereign-tls.conf;
+    include /etc/nginx/snippets/sovereign-wellknown.conf;
     client_max_body_size {{ radicale_max_body_size }};
 
     location / {

@@ -6,6 +6,7 @@ server {
     http2 on;
     server_name {{ mta_sts_domains | map('regex_replace', '^', 'mta-sts.') | join(' ') }};
     include /etc/nginx/snippets/sovereign-tls.conf;
+    include /etc/nginx/snippets/sovereign-wellknown.conf;
     include /etc/nginx/snippets/sovereign-static-headers.conf;
 
     location = /.well-known/mta-sts.txt {

@@ -23,6 +23,7 @@ server {
     http2 on;
     server_name {{ roundcube_host }};
     include /etc/nginx/snippets/sovereign-tls.conf;
+    include /etc/nginx/snippets/sovereign-wellknown.conf;
     root /var/lib/roundcube/public_html;
     client_max_body_size {{ roundcube_post_max_size }};
     auth_basic "Webmail";

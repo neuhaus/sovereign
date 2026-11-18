@@ -18,3 +18,12 @@ nginx_tls_curves: prime256v1:secp384r1
 # logs hold client IPs, so the retention is also a privacy decision.
 nginx_log_dir: /var/log/nginx/sovereign
 nginx_log_keep_days: 30
+
+# security.txt (RFC 9116) and robots.txt on every HTTPS host. Expires is one
+# year from the start of the current month: every Ansible run in a new month
+# moves it on, so run the playbook regularly (a server untouched for a year
+# would publish an expired file).
+nginx_wellknown_dir: /var/www/sovereign-wellknown
+nginx_security_contact: "mailto:postmaster@{{ (mail_domains | default([certbot_domains[0]]))[0] }}"
+nginx_security_languages: en
+nginx_security_hosts: "{{ certbot_domains }}"

@@ -130,6 +130,41 @@ def test_static_sites_send_strict_headers(host, domain, prefix, path):
     assert sent.get("strict-transport-security") == ["max-age=63072000"], sent
 
 
+def all_hosts(ansible_var):
+    return ansible_var("certbot_domains")
+
+
+def test_security_txt_on_every_host(host, ansible_var):
+    hosts = all_hosts(ansible_var)
+    domain = ansible_var("mail_domains")[0]
+    for name in hosts:
+        # No basic auth: also the webmail serves it without a login.
+        text = https(host, name, "/.well-known/security.txt")
+        fields = [line.split(":", 1) for line in text.splitlines() if line and not line.startswith("#")]
+        keys = [k for k, _ in fields]
+        assert ("Contact", " mailto:postmaster@" + domain) in [(k, v) for k, v in fields], text
+        assert keys.count("Expires") == 1 and set("https://%s/.well-known/security.txt" % h for h in hosts) == {
+            v.strip() for k, v in fields if k == "Canonical"
+        }, text
+
+
+def test_security_txt_expires_within_a_year(host, ansible_var):
+    text = https(host, ansible_var("certbot_domains")[0], "/.well-known/security.txt")
+    expires = next(line.split(":", 1)[1].strip() for line in text.splitlines() if line.startswith("Expires:"))
+    left = int(host.check_output("echo $(( $(date -d %s +%%s) - $(date +%%s) ))", expires))
+    # RFC 9116: less than a year; one year from the start of this month.
+    assert 300 * 86400 < left <= 366 * 86400, expires
+
+
+def test_robots_txt_disallows_everything(host, ansible_var):
+    for name in all_hosts(ansible_var):
+        assert https(host, name, "/robots.txt").splitlines() == ["User-agent: *", "Disallow: /"], name
+
+
+def test_no_indexing_header(host, domain):
+    assert headers(host, "mta-sts." + domain, "/.well-known/mta-sts.txt").get("x-robots-tag") == ["noindex, nofollow"]
+
+
 def test_unknown_paths_return_404(host, domain):
     code = host.check_output(
         "curl -s -o /dev/null -w '%%{http_code}' --resolve mta-sts.%s:443:127.0.0.1 https://mta-sts.%s/other",

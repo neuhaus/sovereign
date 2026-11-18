@@ -16,3 +16,5 @@ ssl_session_tickets off;
 access_log {{ nginx_log_dir }}/access.log;
 error_log {{ nginx_log_dir }}/error.log;
 add_header Strict-Transport-Security "max-age=63072000" always;
+# Nothing here belongs in a search engine (robots.txt says the same).
+add_header X-Robots-Tag "noindex, nofollow" always;

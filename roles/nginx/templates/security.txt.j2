@@ -1,0 +1,7 @@
+# {{ ansible_managed }}
+Contact: {{ nginx_security_contact }}
+Expires: {{ '%04d-%02d-01T00:00:00Z' | format(now(utc=true).year + 1, now(utc=true).month) }}
+Preferred-Languages: {{ nginx_security_languages }}
+{% for host in nginx_security_hosts %}
+Canonical: https://{{ host }}/.well-known/security.txt
+{% endfor %}
