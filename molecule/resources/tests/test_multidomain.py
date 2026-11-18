@@ -249,6 +249,13 @@ def test_missing_certificate_name_stops_the_run(host, ansible_var, ctx, role, mi
     assert missing + ctx["second"] in output, output
 
 
+def test_missing_postmaster_stops_the_run(host, ansible_var, ctx):
+    # The assertion runs before the role touches the database.
+    aliases = [a for a in ansible_var("mail_aliases") if a["source"] != "postmaster@" + ctx["second"]]
+    output = run_playbook(host, TESTS / "assert_role.yml", {"sovtest_role": "maildb", "mail_aliases": aliases}, expect_failure=True)
+    assert "postmaster@" + ctx["second"] + " is missing" in output, output
+
+
 def test_removing_a_domain(host, client, ctx):
     keep = {
         "maildb_domains": ["{{ sovtest_domain }}"],

@@ -101,6 +101,8 @@ provisioner:
           - source: "fwd@{{ sovtest_domain }}"
             destinations: ["someone@{{ sovtest_external_domain }}"]
           # Across domains, and forwarding from the second domain.
+          - source: "postmaster@{{ sovtest_second_domain }}"
+            destinations: ["alice@{{ sovtest_second_domain }}"]
           - source: "info@{{ sovtest_second_domain }}"
             destinations: ["alice@{{ sovtest_domain }}"]
           - source: "fwd2@{{ sovtest_second_domain }}"

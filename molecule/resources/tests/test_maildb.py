@@ -40,6 +40,7 @@ def test_database_mirrors_inventory(host, sovtest_vars):
         "fwd2@%s>someone2@%s" % (second, sovtest_vars["sovtest_external_domain"]),
         "fwd@%s>someone@%s" % (domain, sovtest_vars["sovtest_external_domain"]),
         "info@%s>alice@%s" % (second, domain),
+        "postmaster@%s>alice@%s" % (second, second),
         "postmaster@%s>alice@%s" % (domain, domain),
         "team@%s>alice@%s" % (domain, domain),
         "team@%s>bob@%s" % (domain, domain),
