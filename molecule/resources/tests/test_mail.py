@@ -163,6 +163,18 @@ def test_mail_to_root_reaches_the_postmaster(host, sovtest_vars):
 
 
 def test_auth_workers_are_limited(host, peer, sovtest_vars):
+def test_system_users_are_no_mail_recipients(host, sovtest_vars):
+    # The host name is local (for root's mail), but only /etc/aliases names
+    # are recipients there: no mail into /var/mail for www-data and the like.
+    script = (
+        "import smtplib, sys; s = smtplib.SMTP('127.0.0.1', 25); s.ehlo('localhost');"
+        " s.mail('test@example.net'); print(s.rcpt(sys.argv[1])[0]); s.quit()"
+    )
+    hostname = host.check_output("postconf -h myhostname")
+    assert host.check_output("python3 -c %s www-data@%s", script, hostname).startswith("5")
+    assert host.check_output("python3 -c %s root@%s", script, hostname) == "250"
+
+
     # 30 wrong passwords at once from dns (which fail2ban ignores): never more
     # than dovecot_auth_worker_limit (4) password checks, 64 MiB each.
     assert "process_limit = 4" in host.check_output("doveconf -n service/auth-worker")

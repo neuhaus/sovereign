@@ -7,7 +7,17 @@ compatibility_level = 3.6
 
 myhostname = {{ postfix_hostname }}
 myorigin = $myhostname
+# Mail to root comes from local programs as root@$myhostname, so the host
+# name is local: /etc/aliases sends root on to the postmaster. Only names in
+# /etc/aliases are local recipients, not every system user (no mail into
+# /var/mail). A host name that is also a mail domain stays virtual only;
+# Postfix can't have a domain in both.
+{% if postfix_hostname not in postfix_local_domains %}
+mydestination = $myhostname, localhost
+{% else %}
 mydestination = localhost
+{% endif %}
+local_recipient_maps = $alias_maps
 mynetworks = 127.0.0.0/8 [::1]/128
 inet_interfaces = all
 inet_protocols = all
