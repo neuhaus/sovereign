@@ -138,11 +138,17 @@ def test_php_runs_as_its_own_user(host, client, ctx):
     assert workers and set(workers) == {"roundcube"}, processes
 
 
-def test_maintenance_job_runs(host):
-    assert host.service("roundcube-maintenance.timer").is_enabled
-    host.run("systemctl start roundcube-maintenance.service")
-    result = host.run("systemctl show -p Result --value roundcube-maintenance.service")
-    assert result.stdout.strip() == "success", host.check_output("journalctl -n 30 -u roundcube-maintenance.service --no-pager")
+@pytest.mark.parametrize("job", ["roundcube-gc", "roundcube-cleandb"])
+def test_maintenance_job_runs(host, job):
+    # Debian's own timers, running as www-data on the database it owns.
+    assert host.service(job + ".timer").is_enabled
+    host.run("systemctl start %s.service", job)
+    result = host.run("systemctl show -p Result --value %s.service", job)
+    assert result.stdout.strip() == "success", host.check_output("journalctl -n 30 -u %s.service --no-pager", job)
+
+
+def test_no_own_maintenance_timer(host):
+    assert not host.file("/etc/systemd/system/roundcube-maintenance.timer").exists
 
 
 def test_login_with_main_password(client, ctx):

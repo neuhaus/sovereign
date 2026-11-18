@@ -150,7 +150,7 @@ unattended_upgrades, systemd_timers, node_exporter.
   need `%(__prefix_line)s`.
 - Debian 13 ships `/var/lib/radicale/collections` owned by root (Testing: by
   radicale); the role sets the owner.
-- Debian's Roundcube cron job does nothing under systemd; the role has a timer.
+- Roundcube's maintenance runs from Debian's own timers (`roundcube-gc`, `roundcube-cleandb`); the role's former timer duplicated them and is removed on upgrade.
 - Dovecot 2.4.1 (Debian 13, not 2.4.5) fails the first query after a schema
   change on its open SQLite connection ("SQL logic error"); schema migrations
   must restart it. Ordinary writes are not affected.

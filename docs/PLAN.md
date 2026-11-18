@@ -142,7 +142,7 @@ Implementation order: 2.1, 2.2, the certificate part of 2.5, 2.3, 2.4, rest of 2
 
 ### 2.6 Webmail & Groupware
 
-- **Roundcube** with the Elastic theme and the ManageSieve and password plugins; its own SQLite database (preferences, contacts, sessions), managed by Debian's dbconfig-common. Debian's cron job does nothing under systemd, so a timer runs its maintenance.
+- **Roundcube** with the Elastic theme and the ManageSieve and password plugins; its own SQLite database (preferences, contacts, sessions), managed by Debian's dbconfig-common. Its maintenance runs from the package's own timers.
   - **Mandatory HTTP basic auth** in front of the whole site (nginx, `roundcube_basic_auth_users`): Roundcube is not trusted, so nothing reaches its PHP code without it. Users in general are trusted. Roundcube never sees these credentials. Failed attempts go to the `nginx-http-auth` jail.
   - PHP runs as its own user, not as nginx's `www-data`, because that user can write the mail database.
   - App-Specific Passwords are refused from loopback, i.e. in the webmail: Roundcube accepts the session password as the current password when changing the main password, and an app password must not be enough for that.

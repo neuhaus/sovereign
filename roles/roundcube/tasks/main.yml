@@ -119,24 +119,38 @@
     state: started
     enabled: true
 
-# Debian's cron job does nothing under systemd.
-- name: Install the maintenance job
-  ansible.builtin.template:
-    src: "{{ item }}.j2"
-    dest: "/etc/systemd/system/{{ item }}"
-    owner: root
-    group: root
-    mode: "0644"
+# Debian's package runs Roundcube's maintenance with its own timers
+# (roundcube-gc every 30 minutes, roundcube-cleandb daily, as www-data).
+- name: Enable Roundcube's maintenance timers
+  ansible.builtin.systemd_service:
+    name: "{{ item }}"
+    state: started
+    enabled: true
+  loop:
+    - roundcube-gc.timer
+    - roundcube-cleandb.timer
+
+# Earlier versions of this role added a timer of their own for the same work.
+- name: Check for the old maintenance timer
+  ansible.builtin.stat:
+    path: /etc/systemd/system/roundcube-maintenance.timer
+  register: roundcube_old_timer
+
+- name: Stop the old maintenance timer
+  ansible.builtin.systemd_service:
+    name: roundcube-maintenance.timer
+    state: stopped
+    enabled: false
+  when: roundcube_old_timer.stat.exists
+
+- name: Remove the old maintenance units
+  ansible.builtin.file:
+    path: "/etc/systemd/system/{{ item }}"
+    state: absent
   loop:
     - roundcube-maintenance.service
     - roundcube-maintenance.timer
-
-- name: Enable the maintenance timer
-  ansible.builtin.systemd_service:
-    name: roundcube-maintenance.timer
-    state: started
-    enabled: true
-    daemon_reload: true
+  notify: Reload systemd units
 
 # nginx reads this file on every request; no reload needed.
 - name: Install the basic auth users

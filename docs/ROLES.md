@@ -126,7 +126,7 @@ Shared collections are created by Ansible and access follows the inventory. Remo
 
 PHP runs as its own user, not nginx's `www-data`, and only that user may use the password service. Roundcube has no access to the mail database: password changes go through `sovereign-passwd` (see maildb), which checks the current password. Before that, Roundcube wrote the database directly, so a code execution bug in it could have changed every account; an external review in November 2026 led to the change.
 
-**Its own password driver,** a few lines that pass the request to the password service. Roundcube's own database, by contrast, is left to Debian's dbconfig-common, which also upgrades its schema. Debian's cron job does nothing under systemd, hence the timer.
+**Its own password driver,** a few lines that pass the request to the password service. Roundcube's own database, by contrast, is left to Debian's dbconfig-common, which also upgrades its schema. Its maintenance (expired sessions, caches, deleted records) runs from the package's own timers.
 
 A wrong password in the webmail can delay other users' webmail logins, because they all reach Dovecot from loopback. This is accepted, since only holders of the basic auth credentials get that far.
 
