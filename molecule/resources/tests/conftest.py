@@ -38,6 +38,19 @@ def sovtest_vars(host):
     return host.ansible.get_variables()
 
 
+def without_restic(sovtest_vars):
+    """Whether the scenario leaves out the restic role (sovtest_without_restic).
+
+    Debian Testing has no restic package at times; see docs/STATUS.md.
+    """
+    return bool(sovtest_vars.get("sovtest_without_restic", False))
+
+
+def skip_without_restic(sovtest_vars):
+    if without_restic(sovtest_vars):
+        pytest.skip("restic role left out: no restic package in this release (docs/STATUS.md)")
+
+
 @pytest.fixture(scope="module")
 def ansible_var(host):
     """Return a fully templated inventory variable of the instance under test."""

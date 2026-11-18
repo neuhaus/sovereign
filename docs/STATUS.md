@@ -175,10 +175,14 @@ unattended_upgrades, systemd_timers, node_exporter.
 
 - **restic is not in Debian Testing** (November 2026): 0.19.1-1 is blocked from
   migrating ("unsatisfiable Built-Using on golang-github-cespare-xxhash"), so
-  the Testing scenario fails at converge and none of its tests run. A Debian
-  packaging matter, not ours; Testing is an early warning only. Decided
-  (2026-11-12): wait for it to return to Testing instead of installing it from
-  unstable; CI's Testing job fails until then.
+  the Testing scenario failed at converge and none of its tests ran. A Debian
+  packaging matter, not ours; Testing is an early warning only. Not installed
+  from unstable (decided 2026-11-12). Since 2026-11-18 the Testing scenario
+  leaves the restic role out instead (`molecule/testing/molecule.yml`:
+  `ANSIBLE_SKIP_TAGS`, `restic_timer_jobs`, `sovtest_without_restic`), and the
+  backup tests are skipped there, so the rest of the stack is tested on
+  Testing. Remove those settings once `apt-cache policy restic` on Testing
+  shows a candidate again.
 
 - Roundcube connects from loopback, so all webmail logins share one Dovecot auth
   penalty: a wrong password can delay other users' webmail logins by up to 15

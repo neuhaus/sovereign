@@ -6,7 +6,7 @@ import uuid
 
 import pytest
 
-from conftest import mail_client, run_playbook
+from conftest import mail_client, run_playbook, skip_without_restic
 
 testinfra_hosts = ["mail"]
 
@@ -14,6 +14,11 @@ TESTS = pathlib.Path(__file__).parent
 SITE = TESTS.parents[2] / "site.yml"
 DB = "/var/lib/sovereign/maildb/mail.sqlite"
 BOB = "sovtest-bob-pass"
+
+
+@pytest.fixture(autouse=True, scope="module")
+def needs_restic(sovtest_vars):
+    skip_without_restic(sovtest_vars)
 
 
 def key_fingerprint(instance, path):

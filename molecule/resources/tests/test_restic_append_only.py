@@ -8,12 +8,17 @@ import pathlib
 
 import pytest
 
-from conftest import run_playbook
+from conftest import run_playbook, skip_without_restic
 
 testinfra_hosts = ["mail"]
 
 TESTS = pathlib.Path(__file__).parent
 ENV = "set -a; . /etc/restic/env; set +a; "
+
+
+@pytest.fixture(autouse=True, scope="module")
+def needs_restic(sovtest_vars):
+    skip_without_restic(sovtest_vars)
 
 
 def restic(host, command):

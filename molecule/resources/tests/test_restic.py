@@ -4,10 +4,17 @@ import uuid
 
 import pytest
 
+from conftest import skip_without_restic
+
 testinfra_hosts = ["mail"]
 
 ENV = "set -a; . /etc/restic/env; set +a; "
 MAILDB = "/var/lib/sovereign/maildb/mail.sqlite"
+
+
+@pytest.fixture(autouse=True, scope="module")
+def needs_restic(sovtest_vars):
+    skip_without_restic(sovtest_vars)
 
 
 def restic(host, command):

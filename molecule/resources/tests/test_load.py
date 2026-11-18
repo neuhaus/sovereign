@@ -12,7 +12,7 @@ import time
 
 import pytest
 
-from conftest import mail_client
+from conftest import mail_client, without_restic
 
 testinfra_hosts = ["mail"]
 
@@ -51,7 +51,8 @@ def load(host, peer, sovtest_vars):
         alice,
     )
     php_fpm = host.check_output("systemctl list-units --type=service --no-legend --plain 'php*-fpm.service' | cut -d' ' -f1").strip()
-    services = SERVICES + ([php_fpm.removesuffix(".service")] if php_fpm else [])
+    backups = not without_restic(sovtest_vars)
+    services = [s for s in SERVICES if backups or s != "sovereign-backup"] + ([php_fpm.removesuffix(".service")] if php_fpm else [])
 
     start = host.check_output("date '+%Y-%m-%d %H:%M:%S'")
     host.run("rm -f %s", SAMPLES)
@@ -60,7 +61,8 @@ def load(host, peer, sovtest_vars):
         "'while :; do awk \"/MemAvailable/ {print \\$2}\" /proc/meminfo; sleep 0.25; done > %s'",
         SAMPLES,
     )
-    host.check_output("systemctl start --no-block sovereign-backup.service")
+    if backups:
+        host.check_output("systemctl start --no-block sovereign-backup.service")
     host.check_output(
         "systemd-run --unit=sovtest-index sh -c 'doveadm fts rescan -u %s && doveadm index -u %s \"*\"'", alice, alice
     )
@@ -81,7 +83,7 @@ def load(host, peer, sovtest_vars):
     )
     clients_seconds = time.time() - started
 
-    backup_done = wait_inactive(host, "sovereign-backup.service", 900)
+    backup_done = wait_inactive(host, "sovereign-backup.service", 900) if backups else None
     index_done = wait_inactive(host, "sovtest-index.service", 900)
     host.run("systemctl stop sovtest-memsample.service")
 
@@ -102,16 +104,18 @@ def load(host, peer, sovtest_vars):
         "oom": oom,
         "clients_seconds": round(clients_seconds),
         "backup_done": backup_done,
-        "backup_ok": host.run("systemctl show -p Result --value sovereign-backup.service").stdout.strip() == "success",
+        # None: no backup in this scenario (no restic package).
+        "backup_ok": host.run("systemctl show -p Result --value sovereign-backup.service").stdout.strip() == "success" if backups else None,
         "index_ok": index_done and host.run("systemctl show -p Result --value sovtest-index.service").stdout.strip() == "success",
     }
     lines = [
-        "Memory under load (%d messages indexed, 200 IMAP logins, 40 webmail logins, 10 submissions, a backup)" % MESSAGES,
+        "Memory under load (%d messages indexed, 200 IMAP logins, 40 webmail logins, 10 submissions%s)" % (
+            MESSAGES, ", a backup" if backups else ""),
         "MemTotal:              %6d MiB" % (total // 1024),
         "Lowest MemAvailable:   %6d MiB (%.0f%%), %d samples" % (min(samples) // 1024, 100 * min(samples) / total, len(samples)),
         "Swap used afterwards:  %6s KiB" % swap_used,
         "Clients took %d s; backup %s; indexing %s" % (
-            clients_seconds, "ok" if result["backup_ok"] else "FAILED", "ok" if result["index_ok"] else "FAILED"),
+            clients_seconds, {True: "ok", False: "FAILED", None: "left out"}[result["backup_ok"]], "ok" if result["index_ok"] else "FAILED"),
         "MemoryPeak per service (MiB, since the service started):",
     ] + ["  %-24s %s" % (name, "-" if kb is None else kb // 1024) for name, kb in peaks.items()] + [
         "OOM messages: " + (oom.strip() or "none"),
@@ -132,4 +136,4 @@ def test_memory_left_under_load(load):
 
 
 def test_backup_and_indexing_finished(load):
-    assert load["backup_ok"] and load["index_ok"], load["report"]
+    assert load["backup_ok"] is not False and load["index_ok"], load["report"]

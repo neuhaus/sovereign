@@ -10,6 +10,8 @@ import re
 import pytest
 import yaml
 
+from conftest import skip_without_restic, without_restic
+
 testinfra_hosts = ["mail"]
 
 MONITORING = pathlib.Path(__file__).parents[3] / "monitoring"
@@ -33,10 +35,11 @@ def test_alert_rules_valid_and_tested(peer):
     assert result.rc == 0, result.stdout + result.stderr
 
 
-def test_every_metric_in_the_rules_exists(host):
+def test_every_metric_in_the_rules_exists(host, sovtest_vars):
     # Run every job that writes a textfile metric once, so the test does not
     # depend on timers or on the order of the test files.
-    for unit in ("sovereign-mailqueue-metrics", "sovereign-support-status", "sovereign-backup", "sovereign-backup-check"):
+    backups = not without_restic(sovtest_vars)
+    for unit in ("sovereign-mailqueue-metrics", "sovereign-support-status") + (("sovereign-backup", "sovereign-backup-check") if backups else ()):
         host.check_output("systemctl start %s.service", unit)
     rules = yaml.safe_load((MONITORING / "alerts.yml").read_text())
     used = set()
@@ -44,11 +47,15 @@ def test_every_metric_in_the_rules_exists(host):
         for rule in group["rules"]:
             used |= set(re.findall(r"\b((?:sovereign|node)_[a-zA-Z0-9_]+)\b", rule["expr"]))
     exported = {line.split("{")[0].split(" ")[0] for line in metrics(host).splitlines() if not line.startswith("#")}
+    if not backups:
+        used = {name for name in used if not name.startswith("sovereign_backup_")}
     assert used - exported == set()
 
 
 @pytest.mark.parametrize("unit", ["postfix.service", "dovecot.service", "sovereign-backup.timer"])
-def test_unit_states_exported(host, unit):
+def test_unit_states_exported(host, sovtest_vars, unit):
+    if unit.startswith("sovereign-backup"):
+        skip_without_restic(sovtest_vars)
     assert 'node_systemd_unit_state{name="%s",state="active",type=' % unit in metrics(host)
 
 

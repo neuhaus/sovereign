@@ -11,7 +11,7 @@ import time
 
 import pytest
 
-from conftest import mail_client
+from conftest import mail_client, skip_without_restic
 
 testinfra_hosts = ["mail"]
 
@@ -71,7 +71,9 @@ def test_service_started(host, rebooted, service):
     "timer",
     ["certbot.timer", "sovereign-backup.timer", "sovereign-support-status.timer", "sovereign-mailqueue-metrics.timer"],
 )
-def test_timer_active(host, rebooted, timer):
+def test_timer_active(host, rebooted, sovtest_vars, timer):
+    if timer.startswith("sovereign-backup"):
+        skip_without_restic(sovtest_vars)
     assert host.service(timer).is_running
 
 

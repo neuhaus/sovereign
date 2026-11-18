@@ -6,7 +6,7 @@ import time
 
 import pytest
 
-from conftest import mail_client, run_playbook
+from conftest import mail_client, run_playbook, without_restic
 
 testinfra_hosts = ["mail"]
 
@@ -119,7 +119,7 @@ NEEDED = {"postfix.service": ["/var/lib/sovereign", "/etc/letsencrypt"], "nginx.
 
 
 @pytest.mark.parametrize("unit", ["rspamd.service", "php*-fpm.service", "postfix.service", "nginx.service", "dovecot.service", "radicale.service", "postsrsd.service"])
-def test_service_cannot_see_secrets(host, unit):
+def test_service_cannot_see_secrets(host, sovtest_vars, unit):
     # Inside the service's mount namespace each path is either gone (the
     # empty /var) or an empty node with mode 0, so even its root master sees
     # nothing there.
@@ -135,7 +135,8 @@ def test_service_cannot_see_secrets(host, unit):
         assert inside.rc == 0 and inside.stdout.splitlines() in ([], ["0"]), (path, inside.stdout[:200], inside.stderr)
         checked.append(path)
     # The ones that matter most must exist here, or the test proves nothing.
-    assert {"/var/vmail", "/var/lib/radicale", "/etc/restic"} <= set(checked), checked
+    must = {"/var/vmail", "/var/lib/radicale"} | (set() if without_restic(sovtest_vars) else {"/etc/restic"})
+    assert must <= set(checked), checked
 
 
 def test_postfix_capabilities(host):

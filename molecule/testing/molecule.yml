@@ -3,10 +3,17 @@
 # testing in prepare.yml. Shared settings: .config/molecule/config.yml
 provisioner:
   name: ansible
+  # Debian Testing has no restic package at the moment (docs/STATUS.md): leave
+  # out the restic role, its timers and the backup tests. Remove these three
+  # settings once restic is back in Testing.
+  env:
+    ANSIBLE_SKIP_TAGS: restic
   inventory:
     group_vars:
       all:
         sovtest_target: testing
+        sovtest_without_restic: true
+        restic_timer_jobs: []
         # Prefix for incus instance, profile and network names (max. 15 chars).
         sovtest_prefix: sov-testing
         sovtest_subnet: 10.234.14
