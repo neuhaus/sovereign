@@ -62,3 +62,10 @@ dovecot_metrics_port: 9900
 # Evolution); the nftables role then opens the port too. Apple Mail, iOS,
 # Outlook and the Android clients don't use ManageSieve.
 dovecot_managesieve_external: "{{ managesieve_external | default(false) }}"
+
+# Password checks running at the same time. Each Argon2id check takes 64 MiB
+# and about 55 ms of CPU; Dovecot would otherwise start up to 30 workers, one
+# per waiting login, so 30 wrong passwords at once would need ~2 GB. More
+# workers than CPU cores add no throughput, only memory: further logins wait
+# in Dovecot's queue instead.
+dovecot_auth_worker_limit: 4

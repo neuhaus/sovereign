@@ -5,6 +5,8 @@ import time
 
 import pytest
 
+from conftest import mail_client
+
 testinfra_hosts = ["mail"]
 
 
@@ -147,3 +149,18 @@ def test_mail_to_root_reaches_the_postmaster(host, sovtest_vars):
         raise AssertionError(host.check_output("journalctl -u postfix@- --since -2min --no-pager -o cat | tail -15"))
 
 
+def test_auth_workers_are_limited(host, peer, sovtest_vars):
+    # 30 wrong passwords at once from dns (which fail2ban ignores): never more
+    # than dovecot_auth_worker_limit (4) password checks, 64 MiB each.
+    assert "process_limit = 4" in host.check_output("doveconf -n service/auth-worker")
+    dns = peer("dns")
+    mail_client(dns)
+    ip, user = sovtest_vars["sovtest_ips"]["mail"], "alice@" + sovtest_vars["sovtest_domain"]
+    host.check_output(
+        "systemd-run --unit=sovtest-authcount sh -c 'for i in $(seq 120); do ps -C auth --no-headers | wc -l; sleep 0.25; done > /var/tmp/sovtest-authcount'"
+    )
+    dns.run("cd /tmp && for i in $(seq 30); do python3 mailclient.py imap-login %s 993 %s wrong-%s >/dev/null & done; wait", ip, user, "x")
+    host.run("while systemctl is-active --quiet sovtest-authcount; do sleep 1; done")
+    counts = [int(n) for n in host.file("/var/tmp/sovtest-authcount").content_string.split()]
+    # "auth" is the auth master plus its workers.
+    assert counts and max(counts) - 1 <= 4, counts

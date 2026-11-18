@@ -231,6 +231,12 @@ service lmtp {
   }
 }
 
+# Password checks (Argon2id, 64 MiB each) at most this many at a time; the
+# rest wait in the queue (dovecot_auth_worker_limit).
+service auth-worker {
+  process_limit = {{ dovecot_auth_worker_limit }}
+}
+
 # SMTP AUTH for Postfix submission.
 service auth {
   unix_listener {{ dovecot_postfix_spool }}/private/auth {
