@@ -1,0 +1,16 @@
+# {{ ansible_managed }}
+# Redis starts with this file (see the redis-server drop-in). Debian's
+# redis.conf is a conffile and stays untouched: edited, a Redis update that
+# changes it would ask, and unattended upgrades would hold it back. Later
+# lines win, so these override Debian's settings.
+include /etc/redis/redis.conf
+
+# Bayes statistics and rate limit buckets: capped memory.
+maxmemory {{ rspamd_redis_maxmemory }}
+maxmemory-policy volatile-ttl
+
+# Only a Unix socket that the redis group (Rspamd) may use, no TCP port:
+# Redis has no password here.
+port 0
+unixsocket {{ rspamd_redis_socket }}
+unixsocketperm 770

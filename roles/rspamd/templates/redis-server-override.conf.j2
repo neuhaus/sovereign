@@ -1,0 +1,6 @@
+# {{ ansible_managed }}
+# Start Redis with Sovereign's file, which includes Debian's redis.conf and
+# overrides some of its settings. The rest of the line is Debian's.
+[Service]
+ExecStart=
+ExecStart=/usr/bin/redis-server /etc/redis/sovereign.conf --supervised systemd --daemonize no

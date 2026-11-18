@@ -122,7 +122,7 @@ The Debian packages as they are (3.12 and 4.1), since no backport exists and one
 
 There is no ClamAV, because it needs 1 to 1.5 GB of RAM on a server with about 2. An attachment policy rejects executables and scripts, also inside archives and with double extensions, which stops most mail-borne malware at no memory cost. A ClamAV on another host can be configured.
 
-Redis (Bayes data, rate limits) listens only on a Unix socket (`rspamd_redis_socket`, mode 0770, group `redis`, which `_rspamd` joins), no TCP port: other local users can't reach it.
+Redis (Bayes data, rate limits) listens only on a Unix socket (`rspamd_redis_socket`, mode 0770, group `redis`, which `_rspamd` joins), no TCP port: other local users can't reach it. Its settings are in `/etc/redis/sovereign.conf`, which includes Debian's `redis.conf` and overrides parts of it; a drop-in starts Redis with that file. `redis.conf` itself is a conffile and stays Debian's (older versions of the role edited it; the role restores it).
 
 One DKIM key per domain, generated once and never replaced. The web interface is reachable from localhost only, and Debian's default controller password is replaced.
 

@@ -408,3 +408,11 @@ def test_moving_to_junk_trains_spam(host, client, ctx):
             "journalctl -u rspamd --no-pager -o cat | grep -q 'learned message as spam: %s@sovtest.example'", subject
         ).rc == 0
     )
+
+
+def test_redis_uses_its_own_file_and_debians_stays_untouched(host):
+    # Debian's redis.conf is a conffile: edited, a Redis update that changes
+    # it would be held back by unattended upgrades.
+    pid = host.check_output("systemctl show -p MainPID --value redis-server")
+    assert "/etc/redis/sovereign.conf" in host.check_output("tr '\\0' ' ' < /proc/%s/cmdline", pid)
+    assert "/etc/redis/redis.conf" not in host.run("dpkg --verify redis-server").stdout

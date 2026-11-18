@@ -8,26 +8,65 @@
     update_cache: true
     cache_valid_time: 3600
 
-# Redis keeps the Bayes statistics and rate limit buckets: capped memory,
-# and only a Unix socket that the redis group may use, no TCP port. Redis has
-# no password here, so on TCP every local process could read and change the
-# statistics. redis.conf is not a conffile (redis-server creates it on
-# install), so editing it doesn't stop unattended upgrades.
+# Redis keeps the Bayes statistics and rate limit buckets. Its settings are
+# in a file of our own that includes Debian's redis.conf (a conffile, left
+# untouched) and overrides parts of it; a drop-in starts Redis with it.
 - name: Configure redis
-  ansible.builtin.lineinfile:
-    path: /etc/redis/redis.conf
-    regexp: "{{ item.regexp }}"
-    line: "{{ item.line }}"
-  loop:
-    - {regexp: "^#? *maxmemory ", line: "maxmemory {{ rspamd_redis_maxmemory }}"}
-    - {regexp: "^#? *maxmemory-policy ", line: "maxmemory-policy volatile-ttl"}
-    # Only the active line: the file also has a commented "# port 0".
-    - {regexp: "^port ", line: "port 0"}
-    - {regexp: "^#? *unixsocket ", line: "unixsocket {{ rspamd_redis_socket }}"}
-    - {regexp: "^#? *unixsocketperm ", line: "unixsocketperm 770"}
-  loop_control:
-    label: "{{ item.line }}"
+  ansible.builtin.template:
+    src: redis-sovereign.conf.j2
+    dest: /etc/redis/sovereign.conf
+    owner: root
+    group: redis
+    mode: "0640"
   notify: Restart redis
+
+- name: Create the redis drop-in directory
+  ansible.builtin.file:
+    path: /etc/systemd/system/redis-server.service.d
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Start redis with Sovereign's configuration
+  ansible.builtin.template:
+    src: redis-server-override.conf.j2
+    dest: /etc/systemd/system/redis-server.service.d/sovereign.conf
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Restart redis
+
+# Earlier versions of this role edited redis.conf in place.
+- name: Check whether redis.conf is Debian's
+  ansible.builtin.command:
+    argv: [dpkg, --verify, redis-server]
+  register: rspamd_redis_verify
+  changed_when: false
+  failed_when: false
+  check_mode: false
+
+- name: Restore Debian's redis.conf
+  when: "'/etc/redis/redis.conf' in rspamd_redis_verify.stdout"
+  block:
+    # Reinstalling restarts Redis, which must then already use the drop-in.
+    - name: Load the redis drop-in
+      ansible.builtin.systemd_service:
+        daemon_reload: true
+
+    - name: Remove the edited redis.conf
+      ansible.builtin.file:
+        path: /etc/redis/redis.conf
+        state: absent
+
+    # --force-confmiss: dpkg puts a missing conffile back.
+    - name: Reinstall redis-server for its redis.conf
+      ansible.builtin.command:
+        argv: [apt-get, install, --reinstall, --yes, -o, "Dpkg::Options::=--force-confmiss", redis-server]
+      environment:
+        DEBIAN_FRONTEND: noninteractive
+      changed_when: true
+      notify: Restart redis
 
 - name: Let rspamd use the redis socket
   ansible.builtin.user:
@@ -41,6 +80,7 @@
     name: redis-server
     state: started
     enabled: true
+    daemon_reload: true
 
 - name: Create the rspamd drop-in directory
   ansible.builtin.file:
