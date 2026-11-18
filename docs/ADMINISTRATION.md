@@ -55,8 +55,12 @@ To revoke one, remove its entry.
     mail_aliases:
       - source: postmaster@example.org
         destinations: [alice@example.org]
+      - source: abuse@example.org
+        destinations: [alice@example.org]
       - source: team@example.org
         destinations: [alice@example.org, bob@example.org]
+
+Every mail domain needs `postmaster@` (RFC 5321) and `abuse@` (RFC 2142, where providers and blocklist operators send complaints), as a mailbox, an alias or a catch-all; the run stops otherwise. Mail to `root` (cron, updates) goes to the `postmaster@` address of the first domain.
 
 Users may send from an alias that points to them. Forwarding to other domains works; the sender is rewritten (SRS) so that SPF still passes.
 

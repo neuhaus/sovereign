@@ -57,3 +57,7 @@ maildb_passwd_minimum_length: "{{ roundcube_password_minimum_length | default(12
 # Users that could write the database in earlier versions: removed from the
 # database group.
 maildb_former_writers: [roundcube]
+
+# Addresses every mail domain must accept: postmaster (RFC 5321) and abuse
+# (RFC 2142). The run stops if one is missing.
+maildb_required_localparts: [postmaster, abuse]

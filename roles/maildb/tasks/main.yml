@@ -49,21 +49,24 @@
   loop_control:
     label: "{{ item.source | default('?') }}"
 
-# RFC 5321 requires every mail domain to accept mail for postmaster@, and
-# the DMARC and TLS-RPT reports and security.txt point there. A mailbox, an
-# alias or a catch-all (@domain) alias will do.
-- name: Assert a postmaster address for every mail domain
+# RFC 5321 requires every mail domain to accept mail for postmaster@ (the
+# DMARC and TLS-RPT reports and security.txt point there too); RFC 2142 adds
+# abuse@, where providers and blocklist operators send complaints. A mailbox,
+# an alias or a catch-all (@domain) alias will do.
+- name: Assert postmaster and abuse addresses for every mail domain
   ansible.builtin.assert:
     that:
       - >-
-        ('postmaster@' ~ item) in (maildb_mailboxes | map(attribute='address') | list)
-        or ('postmaster@' ~ item) in (maildb_aliases | map(attribute='source') | list)
-        or ('@' ~ item) in (maildb_aliases | map(attribute='source') | list)
+        (item.1 ~ '@' ~ item.0) in (maildb_mailboxes | map(attribute='address') | list)
+        or (item.1 ~ '@' ~ item.0) in (maildb_aliases | map(attribute='source') | list)
+        or ('@' ~ item.0) in (maildb_aliases | map(attribute='source') | list)
     fail_msg: >-
-      postmaster@{{ item }} is missing: add it to mail_aliases (or mail_mailboxes),
-      e.g. "- source: postmaster@{{ item }}" with your own address as destination.
+      {{ item.1 }}@{{ item.0 }} is missing: add it to mail_aliases (or mail_mailboxes),
+      e.g. "- source: {{ item.1 }}@{{ item.0 }}" with your own address as destination.
     quiet: true
-  loop: "{{ maildb_domains }}"
+  loop: "{{ maildb_domains | product(maildb_required_localparts) | list }}"
+  loop_control:
+    label: "{{ item.1 }}@{{ item.0 }}"
 
 - name: Install sqlite3 and argon2 for Python
   ansible.builtin.apt:

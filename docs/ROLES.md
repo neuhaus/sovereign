@@ -70,6 +70,8 @@ One certificate covers all names and all domains. That is simple and needs no pe
 
 SQLite, with no database server: one file to back up, and no credentials to manage. It mirrors the inventory exactly and reverts manual changes, with one exception: passwords.
 
+Every mail domain must have `postmaster@` and `abuse@` (`maildb_required_localparts`); the check runs before the database changes.
+
 Users change their password in Roundcube, so the role cannot simply compare hashes. It stores the hash last taken from the inventory (`inventory_password`) and compares that. A changed hash there means an admin reset, which applies once, so no flag has to be removed afterwards. The rejected alternative was a `reset_password: true` flag, which overwrites the user's password on every run until someone removes it.
 
 **Revoking access ends open sessions.** A database change alone only stops new logins, so the role compares the database with the inventory before syncing and the dovecot role kicks every mailbox whose password is reset, that is removed or disabled, or that loses or changes an app password. Sessions can't be matched to the app password they used, so that last case ends all of the mailbox's sessions.

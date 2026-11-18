@@ -37,6 +37,8 @@ def test_database_mirrors_inventory(host, sovtest_vars):
     ]
     assert query(host, "SELECT id || ':' || name FROM app_passwords ORDER BY 1") == ["AlicPhn1:phone", "CarolPh1:phone"]
     assert query(host, "SELECT source || '>' || destination FROM aliases ORDER BY 1") == [
+        "abuse@%s>alice@%s" % (second, second),
+        "abuse@%s>alice@%s" % (domain, domain),
         "fwd2@%s>someone2@%s" % (second, sovtest_vars["sovtest_external_domain"]),
         "fwd@%s>someone@%s" % (domain, sovtest_vars["sovtest_external_domain"]),
         "info@%s>alice@%s" % (second, domain),
