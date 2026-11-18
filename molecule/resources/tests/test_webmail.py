@@ -198,6 +198,45 @@ def test_internal_files_not_served(host, ctx, path):
     assert code in ("403", "404"), path
 
 
+# What scanners probe for on any web server (leaked .env files, repositories,
+# dumps, PHP helpers), unnormalized as they send it. Nothing may answer with
+# content: the webmail and CalDAV ask for a login first, the static sites
+# have only their fixed files, and behind the logins it is 403 or 404.
+SCANNER_PATHS = [
+    "/.env", "/roundcube/.env", "/index.php/../.env", "/.git/config", "/.git/HEAD", "/.htaccess", "/.DS_Store",
+    "/composer.json", "/vendor/autoload.php", "/phpinfo.php", "/wp-login.php", "/backup.sql", "/server-status",
+]
+
+
+@pytest.mark.parametrize("path", SCANNER_PATHS)
+def test_scanner_paths_reveal_nothing(host, ctx, path):
+    def code(name, login=""):
+        return host.check_output(
+            "curl -s --path-as-is -o /dev/null -w '%%{http_code}' " + login + " --resolve %s:443:127.0.0.1 https://%s%s",
+            name, name, path,
+        )
+
+    d = ctx["domain"]
+    answers = {
+        ctx["web"]: code(ctx["web"]),
+        ctx["dav"]: code(ctx["dav"]),
+        "mta-sts." + d: code("mta-sts." + d),
+        "autoconfig." + d: code("autoconfig." + d),
+        "autodiscover." + d: code("autodiscover." + d),
+        "webmail with login": code(ctx["web"], "-u " + WEBMAIL_AUTH),
+        "CalDAV with login": code(ctx["dav"], "-u '%s:%s'" % (ctx["alice"], ALICE)),
+        "port 80": host.check_output("curl -s --path-as-is -o /dev/null -w '%%{http_code}' http://127.0.0.1%s", path),
+    }
+    expected = {
+        ctx["web"]: {"401"}, ctx["dav"]: {"401"},
+        "mta-sts." + d: {"404"}, "autoconfig." + d: {"404"}, "autodiscover." + d: {"404"},
+        "webmail with login": {"403", "404"}, "CalDAV with login": {"403", "404"},
+        "port 80": {"301"},
+    }
+    wrong = {name: answer for name, answer in answers.items() if answer not in expected[name]}
+    assert not wrong, wrong
+
+
 def test_only_nginx_serves_http(host):
     # No Apache pulled in by the PHP packages.
     installed = host.check_output("dpkg-query -W -f '${db:Status-Abbrev}${Package}\\n'")
