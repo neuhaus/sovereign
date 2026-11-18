@@ -74,7 +74,7 @@ Implementation order: 2.1, 2.2, the certificate part of 2.5, 2.3, 2.4, rest of 2
 
 - **Time:** systemd-timesyncd, servers from `ntp_servers`, otherwise Debian's default pool.
 - **SSH:** key logins only (`openssh` role). The role stops if the connecting user has no key, so that it cannot lock anyone out.
-- **Firewall:** nftables role. `/etc/nftables.conf` allows TCP 22, 25, 80, 143, 443, 587, 993 and 4190, dropping everything else. Only Sovereign's own table is replaced on reload, so fail2ban's table and bans survive.
+- **Firewall:** nftables role. `/etc/nftables.conf` allows TCP 22, 25, 80, 143, 443, 465, 587, 993 and 4190, dropping everything else. Only Sovereign's own table is replaced on reload, so fail2ban's table and bans survive.
 - **Task scheduling:** systemd-timers role replacing all cron functionality (timers no longer defined are removed).
 - **Intrusion prevention:** Fail2ban with the systemd backend (journald), nftables ban actions; jails for sshd, Postfix (aggressive mode) and Dovecot. The sshd filter also counts OpenSSH's own penalty drops (OpenSSH >= 10.1).
 - **Updates:** unattended-upgrades for automated security patches (on Debian 13 also for packages installed from backports); automatic reboot is opt-in because of the LUKS remote unlock.
@@ -98,7 +98,7 @@ Implementation order: 2.1, 2.2, the certificate part of 2.5, 2.3, 2.4, rest of 2
 - **Full-text search:** fts-flatcurve (Xapian; Debian package `dovecot-flatcurve`), autoindexing on delivery, Junk and Trash excluded, one indexer process with a memory limit.
 - **SRS:** postsrsd 2 (socketmap), on Debian 13 from `trixie-backports` (Debian 13 ships 1.x with a different interface).
 - **Plus-addressing:** sub-addressing with `+` as delimiter in Postfix and Dovecot.
-- Dovecot listens on 143 (IMAP + STARTTLS) and 993 (IMAPS). Cleartext authentication without TLS is refused (`auth_allow_cleartext = no`). Submission (587) requires STARTTLS and SASL; the sender address must belong to the login or an alias pointing to it.
+- Dovecot listens on 143 (IMAP + STARTTLS) and 993 (IMAPS). Cleartext authentication without TLS is refused (`auth_allow_cleartext = no`). Submission on 465 (implicit TLS, preferred by the client configuration, RFC 8314) and on 587 (STARTTLS required) with SASL; the sender address must belong to the login or an alias pointing to it.
 - Debian's `master.cf` is kept (its chroot default differs between Debian 13 and Testing); the submission service is added with `postconf`. Lookup tables use lmdb (Postfix 3.11 deprecates hash/btree).
 - All Dovecot settings (SQL auth, mail_crypt, FTS, IMAPSieve, sub-addressing) are verified against the **Dovecot 2.4 documentation** and the real `doveconf` of both releases.
 
@@ -213,6 +213,7 @@ Rewrite the README and Wiki to reflect the modernized, bare-metal deployment str
   - TCP 80: HTTP (ACME challenge, redirect to HTTPS)
   - TCP 143: IMAP (mail retrieval with STARTTLS)
   - TCP 443: HTTPS (webmail, MTA-STS policy, Autoconfig, Autodiscover)
+  - TCP 465: message submission (implicit TLS)
   - TCP 587: message submission (STARTTLS)
   - TCP 993: IMAPS (implicit TLS mail retrieval)
   - TCP 4190: ManageSieve (filter configuration)

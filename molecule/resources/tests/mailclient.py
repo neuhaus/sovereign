@@ -72,11 +72,16 @@ def cmd_submission_plain(host):
     out(starttls=starttls, auth_before_tls=auth, mail_code=code)
 
 
-def cmd_submit(host, user, password, frm, to, subject, kind="plain"):
-    s = smtplib.SMTP(host, 587, timeout=15)
-    s.starttls(context=ctx())
+def cmd_submit(host, user, password, frm, to, subject, kind="plain", port="587"):
+    """Submission on 587 (STARTTLS) or 465 (implicit TLS); user "" sends without login."""
+    if port == "465":
+        s = smtplib.SMTP_SSL(host, 465, timeout=15, context=ctx())
+    else:
+        s = smtplib.SMTP(host, 587, timeout=15)
+        s.starttls(context=ctx())
     try:
-        s.login(user, password)
+        if user:
+            s.login(user, password)
     except smtplib.SMTPAuthenticationError as exc:
         out(ok=False, stage="auth", error=str(exc))
         return

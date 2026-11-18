@@ -86,8 +86,9 @@
     mode: "0644"
   notify: Postfix configuration changed
 
-# Submission (587) is added to Debian's master.cf. It runs chrooted exactly
-# when Debian's smtp service does (Debian 13: yes, Testing: no).
+# Submission (587) and submissions (465) are added to Debian's master.cf.
+# They run chrooted exactly when Debian's smtp service does (Debian 13: yes,
+# Testing: no).
 - name: Read the chroot setting of Debian's smtp service
   ansible.builtin.command:
     argv: [postconf, -Fh, smtp/inet/chroot]
@@ -96,43 +97,49 @@
 
 # postconf -M prints the service line followed by its -o options (-h is not
 # allowed with -M); only the first eight fields describe the service itself.
-# Re-adding the service would drop its -o options.
-- name: Read the submission service
+# Re-adding a service would drop its -o options.
+- name: Read the submission services
   ansible.builtin.command:
-    argv: [postconf, -M, submission/inet]
+    argv: [postconf, -M, "{{ item.name }}/inet"]
+  loop: "{{ postfix_submission_services }}"
+  loop_control:
+    label: "{{ item.name }}"
   register: postfix_submission_current
   changed_when: false
   failed_when: false
 
-- name: Add the submission service
+- name: Add the submission services
   ansible.builtin.command:
     argv:
       - postconf
       - -M
-      - "submission/inet=submission inet n - {{ postfix_smtp_chroot.stdout }} - - smtpd"
+      - "{{ item.item.name }}/inet={{ item.item.name }} inet n - {{ postfix_smtp_chroot.stdout }} - - smtpd"
+  loop: "{{ postfix_submission_current.results }}"
+  loop_control:
+    label: "{{ item.item.name }}"
   when: >-
-    postfix_submission_current.stdout.split()[:8]
-    != ['submission', 'inet', 'n', '-', postfix_smtp_chroot.stdout, '-', '-', 'smtpd']
+    item.stdout.split()[:8]
+    != [item.item.name, 'inet', 'n', '-', postfix_smtp_chroot.stdout, '-', '-', 'smtpd']
   changed_when: true
   notify: Postfix configuration changed
 
 - name: Read the submission service parameters
   ansible.builtin.command:
-    argv: [postconf, -Ph, "submission/inet/{{ item.key }}"]
-  loop: "{{ postfix_submission_options | dict2items }}"
+    argv: [postconf, -Ph, "{{ item.0.name }}/inet/{{ item.1.key }}"]
+  loop: "{{ postfix_submission_services | subelements('params') }}"
   loop_control:
-    label: "{{ item.key }}"
+    label: "{{ item.0.name }} {{ item.1.key }}"
   register: postfix_submission_params
   changed_when: false
   failed_when: false
 
 - name: Set the submission service parameters
   ansible.builtin.command:
-    argv: [postconf, -P, "submission/inet/{{ item.item.key }}={{ item.item.value }}"]
+    argv: [postconf, -P, "{{ item.item.0.name }}/inet/{{ item.item.1.key }}={{ item.item.1.value }}"]
   loop: "{{ postfix_submission_params.results }}"
   loop_control:
-    label: "{{ item.item.key }}"
-  when: item.stdout != item.item.value
+    label: "{{ item.item.0.name }} {{ item.item.1.key }}"
+  when: item.stdout != item.item.1.value
   changed_when: true
   notify: Postfix configuration changed
 

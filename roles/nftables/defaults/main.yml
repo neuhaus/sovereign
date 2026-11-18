@@ -1,5 +1,5 @@
 ---
-# TCP ports open to everyone: SSH, SMTP, HTTP, IMAP, HTTPS, submission, IMAPS
+# TCP ports open to everyone: SSH, SMTP, HTTP, IMAP, HTTPS, submissions, submission, IMAPS
 # and ManageSieve.
 nftables_open_tcp_ports:
   - 22
@@ -7,6 +7,7 @@ nftables_open_tcp_ports:
   - 80
   - 143
   - 443
+  - 465
   - 587
   - 993
   - 4190

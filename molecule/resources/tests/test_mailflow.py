@@ -197,6 +197,39 @@ def test_imap_143_refuses_login_before_starttls(client, ctx):
     assert not result["login_without_tls"]
 
 
+# Submissions (465, implicit TLS)
+
+
+@pytest.mark.parametrize("password", [ALICE, ALICE_APP], ids=["main-password", "app-password"])
+def test_submissions_delivers(client, ctx, password):
+    subject = unique("subms")
+    assert client("submit", ctx["mail_ip"], ctx["alice"], password, ctx["alice"], ctx["bob"], subject, "plain", "465")["ok"]
+    assert delivered(client, ctx, ctx["bob"], BOB, subject)
+
+
+def test_submissions_rejects_wrong_password(client, ctx):
+    result = client("submit", ctx["mail_ip"], ctx["alice"], "wrong-password", ctx["alice"], ctx["bob"], unique("x"), "plain", "465")
+    assert not result["ok"] and result["stage"] == "auth"
+
+
+def test_submissions_rejects_foreign_sender(client, ctx):
+    result = client("submit", ctx["mail_ip"], ctx["alice"], ALICE, ctx["bob"], ctx["alice"], unique("spoof"), "plain", "465")
+    assert not result["ok"] and "553" in result["error"], result
+
+
+def test_submissions_requires_login(client, ctx):
+    result = client("submit", ctx["mail_ip"], "", "", ctx["alice"], ctx["bob"], unique("nologin"), "plain", "465")
+    assert not result["ok"] and result["stage"] == "send", result
+
+
+def test_submissions_uses_the_acme_certificate(host, ctx):
+    served = host.check_output(
+        "openssl s_client -connect 127.0.0.1:465 -servername mail.%s -verify_return_error </dev/null 2>/dev/null"
+        " | openssl x509 -noout -fingerprint -sha256" % ctx["domain"]
+    )
+    assert served == host.check_output("openssl x509 -in %s -noout -fingerprint -sha256", ctx["cert"])
+
+
 def test_managesieve_offers_starttls(client, ctx):
     assert client("sieve", ctx["mail_ip"])["starttls"]
 
@@ -205,7 +238,7 @@ def test_managesieve_offers_starttls(client, ctx):
 
 
 @pytest.mark.parametrize(
-    "port,mode", [(25, "smtp"), (587, "smtp"), (143, "imap"), (993, "implicit")]
+    "port,mode", [(25, "smtp"), (465, "implicit"), (587, "smtp"), (143, "imap"), (993, "implicit")]
 )
 @pytest.mark.parametrize("version,accepted", [("TLSv1", False), ("TLSv1_1", False), ("TLSv1_2", True), ("TLSv1_3", True)])
 def test_tls_versions(client, ctx, port, mode, version, accepted):

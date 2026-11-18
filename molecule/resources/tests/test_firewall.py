@@ -9,7 +9,7 @@ from conftest import probe
 
 testinfra_hosts = ["dns", "pebble"]
 
-OPEN_PORTS = [22, 25, 80, 143, 443, 587, 993, 4190]
+OPEN_PORTS = [22, 25, 80, 143, 443, 465, 587, 993, 4190]
 CLOSED_PORTS = [23, 110, 3306, 5432, 8080]
 EXPORTER_PORTS = [9100, 9900]
 

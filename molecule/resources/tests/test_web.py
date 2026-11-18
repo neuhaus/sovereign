@@ -55,7 +55,7 @@ def test_autoconfig_served(host, domain, path):
     hosts = {n.firstChild.data for n in doc.getElementsByTagName("hostname")}
     ports = {n.firstChild.data for n in doc.getElementsByTagName("port")}
     assert hosts == {"mail." + domain}
-    assert ports == {"993", "143", "587"}
+    assert ports == {"993", "143", "465", "587"}
 
 
 @pytest.mark.parametrize("path", ["/autodiscover/autodiscover.xml", "/Autodiscover/Autodiscover.xml"])
@@ -82,7 +82,7 @@ def test_apple_profile_settings(host, domain):
     assert account["PayloadType"] == "com.apple.mail.managed"
     assert account["EmailAccountType"] == "EmailTypeIMAP"
     assert (account["IncomingMailServerHostName"], account["IncomingMailServerPortNumber"]) == ("mail." + domain, 993)
-    assert (account["OutgoingMailServerHostName"], account["OutgoingMailServerPortNumber"]) == ("mail." + domain, 587)
+    assert (account["OutgoingMailServerHostName"], account["OutgoingMailServerPortNumber"]) == ("mail." + domain, 465)
     assert account["IncomingMailServerUseSSL"] and account["OutgoingMailServerUseSSL"]
     # One file for every user: the device asks for address, user and password.
     for key in ("EmailAddress", "IncomingMailServerUsername", "OutgoingMailServerUsername", "IncomingPassword", "OutgoingPassword"):

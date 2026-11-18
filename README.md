@@ -88,6 +88,7 @@ Network ports
 | TCP 80 | ACME challenges, redirect to HTTPS |
 | TCP 143 | IMAP with STARTTLS |
 | TCP 443 | Webmail, CalDAV/CardDAV, MTA-STS policy, client autoconfiguration |
+| TCP 465 | Mail submission with implicit TLS (preferred, RFC 8314) |
 | TCP 587 | Mail submission with STARTTLS |
 | TCP 993 | IMAP over TLS |
 | TCP 4190 | ManageSieve (filters) |

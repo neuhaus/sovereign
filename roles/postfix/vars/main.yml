@@ -12,6 +12,17 @@ postfix_submission_options:
   smtpd_recipient_restrictions: reject_non_fqdn_recipient
   milter_macro_daemon_name: ORIGINATING
 
+# Submission over implicit TLS (465, RFC 8314), preferred by the client
+# configuration files: the same rules, but TLS starts with the connection.
+postfix_submission_services:
+  - name: submission
+    params: "{{ postfix_submission_options | dict2items }}"
+  - name: submissions
+    params: >-
+      {{ postfix_submission_options
+         | combine({'syslog_name': 'postfix/submissions', 'smtpd_tls_wrappermode': 'yes'})
+         | dict2items }}
+
 # Lookup tables on the mail database (sqlite_table(5): %s full key, %u local
 # part, %d domain). Postfix escapes the key before substitution.
 postfix_sqlite_maps:
