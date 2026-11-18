@@ -136,6 +136,10 @@ A disaster recovery restores first and then runs the playbook. In the other orde
 
 Security updates, on Debian 13 also for packages from backports, as postsrsd is one. Automatic reboots are opt-in, because a server with an encrypted disk then waits for a remote unlock.
 
+**Security support status.** `sovereign-support-status` runs weekly and once at setup. It asks `check-support-status` (debian-security-support) which installed packages Debian's security team no longer fully supports, lists them in the journal and exports the counts per type (ended, early end, limited). It removes nothing. `check-support-status` always exits 0, so the script reads its output. `debsecan` is not used: it lists every open CVE, far too many to act on. What the check can't see: Go programs (restic, prometheus-node-exporter) are only rebuilt in point releases, because Debian's list names the `golang-*` libraries rather than the programs built from them, and postsrsd from `trixie-backports` is outside the security team's support altogether.
+
+**isc-dhcp-client** lost its security support in 2023. Debian 13 installs `dhcpcd-base` instead, but servers upgraded from Debian 12 still carry it, and so do the incus test images. The role removes it only when nothing uses it: no `dhclient` running, no DHCP in `/etc/network/interfaces` without `dhcpcd-base` to take over, and nothing else removed with it. Removing the client that holds the lease would cut a remote server off at the next renewal. "Manually installed" and "systemd-networkd present" say nothing here: debootstrap marks the whole base system as manual, and networkd is part of the systemd package.
+
 ## systemd_timers
 
 Replaces cron. Jobs come from the inventory (`systemd_timers_jobs`) and from other roles (restic's), and timers no longer listed are removed, which cron files would not do.

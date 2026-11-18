@@ -2,6 +2,8 @@
 
 import time
 
+import pytest
+
 testinfra_hosts = ["mail"]
 
 
@@ -96,6 +98,73 @@ def test_unattended_upgrades_enabled(host):
 def test_unattended_upgrades_dry_run(host):
     result = host.run("unattended-upgrade --dry-run")
     assert result.rc == 0, result.stderr
+
+
+# Security support status (debian-security-support)
+
+SUPPORT_METRICS = "/var/lib/prometheus/node-exporter/sovereign_security_support.prom"
+
+
+def support_metrics(host, env=""):
+    host.check_output("%s /usr/local/sbin/sovereign-support-status" % env)
+    lines = host.file(SUPPORT_METRICS).content_string.splitlines()
+    return dict(line.rsplit(" ", 1) for line in lines if not line.startswith("#"))
+
+
+def test_isc_dhcp_client_removed(host):
+    # The incus image installs it; nothing here uses it (systemd-networkd).
+    assert not host.package("isc-dhcp-client").is_installed
+
+
+@pytest.mark.parametrize(
+    "setup,teardown,reason",
+    [
+        ("cp /bin/sleep /tmp/dhclient && (/tmp/dhclient 60 >/dev/null 2>&1 &)", "pkill -x dhclient; rm -f /tmp/dhclient", "dhclient is running"),
+        (
+            "mkdir -p /etc/network/interfaces.d && echo 'iface eth9 inet dhcp' > /etc/network/interfaces.d/sovtest",
+            "rm -f /etc/network/interfaces.d/sovtest",
+            "ifupdown uses DHCP",
+        ),
+    ],
+)
+def test_dhcp_client_check_sees_use(host, setup, teardown, reason):
+    assert host.run("/usr/local/sbin/sovereign-dhcp-client-in-use").rc == 1
+    host.check_output(setup)
+    try:
+        result = host.run("/usr/local/sbin/sovereign-dhcp-client-in-use")
+        assert result.rc == 0 and reason in result.stdout, result.stdout
+    finally:
+        host.run(teardown)
+
+
+def test_support_status_timer_scheduled(host):
+    timer = host.service("sovereign-support-status.timer")
+    assert timer.is_enabled
+    assert timer.is_running
+
+
+def test_no_packages_without_full_security_support(host):
+    host.check_output("systemctl start sovereign-support-status.service")
+    metrics = support_metrics(host)
+    for kind in ("ended", "earlyend", "limited"):
+        assert metrics['sovereign_security_support_affected_packages{type="%s"}' % kind] == "0", metrics
+    assert time.time() - int(metrics["sovereign_security_support_last_run_timestamp_seconds"]) < 120
+
+
+def test_support_status_reports_affected_packages(host):
+    # Debian's list replaced by one that limits postfix: detection and parsing,
+    # without installing anything.
+    host.check_output("printf 'postfix limited sovtest\\n' > /tmp/sovtest-support-list")
+    try:
+        metrics = support_metrics(host, "SOVEREIGN_SUPPORT_LIST=/tmp/sovtest-support-list")
+        affected = int(metrics['sovereign_security_support_affected_packages{type="limited"}'])
+        # postfix and its installed binary packages (postfix-sqlite, postfix-lmdb).
+        assert affected >= 3, metrics
+        metrics = support_metrics(host, "SOVEREIGN_SUPPORT_LIST=/tmp/sovtest-support-list SOVEREIGN_SUPPORT_EXCEPT=postfix")
+        assert int(metrics['sovereign_security_support_affected_packages{type="limited"}']) == affected - 1
+    finally:
+        host.run("rm -f /tmp/sovtest-support-list")
+        support_metrics(host)
 
 
 # systemd timers

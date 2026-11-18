@@ -1,0 +1,39 @@
+#!/bin/bash
+# {{ ansible_managed }}
+# Which installed packages Debian's security team no longer fully supports:
+# support ended, ended early, or limited (debian-security-support). Lists them
+# in the journal and writes per-type counts for node_exporter. It never
+# removes anything: a package may still be needed, e.g. a DHCP client.
+#
+# For the tests: SOVEREIGN_SUPPORT_EXCEPT overrides the exempted packages
+# (comma-separated), SOVEREIGN_SUPPORT_LIST replaces Debian's list of packages
+# with a file in the same format.
+set -euo pipefail
+
+except=${SOVEREIGN_SUPPORT_EXCEPT-{{ unattended_upgrades_support_exceptions | join(',') }}}
+list=${SOVEREIGN_SUPPORT_LIST-}
+file={{ unattended_upgrades_metrics_dir }}/sovereign_security_support.prom
+
+metrics=(
+    "# HELP sovereign_security_support_affected_packages Installed binary packages with ended, early ended or limited Debian security support."
+    "# TYPE sovereign_security_support_affected_packages gauge"
+)
+for type in ended earlyend limited; do
+    report=$(check-support-status --type "$type" --no-heading ${except:+--except "$except"} ${list:+--list "$list"})
+    # One "  - <package> (installed version: ...)" line per affected package.
+    packages=$(sed -n 's/^ *- \([^ ]*\) (installed version.*/\1/p' <<<"$report")
+    count=$(grep -c . <<<"$packages" || true)
+    if [ "$count" -gt 0 ]; then
+        echo "$type:" $packages
+    fi
+    metrics+=("sovereign_security_support_affected_packages{type=\"$type\"} $count")
+done
+metrics+=(
+    "# HELP sovereign_security_support_last_run_timestamp_seconds When the support status was last checked."
+    "# TYPE sovereign_security_support_last_run_timestamp_seconds gauge"
+    "sovereign_security_support_last_run_timestamp_seconds $(date +%s)"
+)
+
+printf '%s\n' "${metrics[@]}" > "$file.new"
+chmod 0644 "$file.new"
+mv "$file.new" "$file"

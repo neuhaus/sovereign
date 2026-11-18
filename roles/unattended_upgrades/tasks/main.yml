@@ -26,3 +26,70 @@
   loop:
     - apt-daily.timer
     - apt-daily-upgrade.timer
+
+# isc-dhcp-client lost Debian's security support in 2023. Debian 13 installs
+# dhcpcd-base instead, but servers upgraded from Debian 12 and some images
+# still carry it. Removed only when nothing uses it: removing the DHCP client
+# that holds the lease would cut a remote server off at the next renewal.
+- name: Install the DHCP client check
+  ansible.builtin.copy:
+    src: sovereign-dhcp-client-in-use
+    dest: /usr/local/sbin/sovereign-dhcp-client-in-use
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Check whether isc-dhcp-client is installed
+  ansible.builtin.command:
+    argv: [dpkg-query, -W, "--showformat=${db:Status-Status}", isc-dhcp-client]
+  register: unattended_upgrades_isc_dhcp
+  changed_when: false
+  failed_when: false
+
+- name: Check whether isc-dhcp-client is still in use
+  ansible.builtin.command:
+    argv: [/usr/local/sbin/sovereign-dhcp-client-in-use]
+  register: unattended_upgrades_isc_dhcp_in_use
+  changed_when: false
+  failed_when: unattended_upgrades_isc_dhcp_in_use.rc not in [0, 1]
+  when: unattended_upgrades_isc_dhcp.stdout == "installed"
+
+- name: Remove isc-dhcp-client
+  ansible.builtin.apt:
+    name: [isc-dhcp-client, isc-dhcp-common]
+    state: absent
+  when:
+    - unattended_upgrades_isc_dhcp.stdout == "installed"
+    - unattended_upgrades_isc_dhcp_in_use.rc == 1
+
+- name: Report why isc-dhcp-client stays
+  ansible.builtin.debug:
+    msg: >-
+      isc-dhcp-client stays installed ({{ unattended_upgrades_isc_dhcp_in_use.stdout }}).
+      It has no security support; see docs/ADMINISTRATION.md for switching to dhcpcd-base.
+  when:
+    - unattended_upgrades_isc_dhcp.stdout == "installed"
+    - unattended_upgrades_isc_dhcp_in_use.rc == 0
+
+- name: Install debian-security-support
+  ansible.builtin.apt:
+    name: debian-security-support
+    state: present
+
+- name: Create the metrics directory
+  ansible.builtin.file:
+    path: "{{ unattended_upgrades_metrics_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Install the support status check
+  ansible.builtin.template:
+    src: sovereign-support-status.j2
+    dest: /usr/local/sbin/sovereign-support-status
+    owner: root
+    group: root
+    mode: "0755"
+  # The timer runs weekly; check once now, so the metric exists from the start.
+  notify: Check the security support status

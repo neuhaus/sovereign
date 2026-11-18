@@ -1,0 +1,5 @@
+---
+- name: Check the security support status
+  ansible.builtin.command:
+    argv: [/usr/local/sbin/sovereign-support-status]
+  changed_when: true

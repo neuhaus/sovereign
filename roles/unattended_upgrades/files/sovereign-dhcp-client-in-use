@@ -1,0 +1,33 @@
+#!/bin/bash
+# Is isc-dhcp-client (Debian security support ended 2023) still needed?
+# Exit 0 and the reason if it is in use or can't safely go, exit 1 if not.
+# Whether the package is installed is not checked here.
+set -euo pipefail
+
+installed() {
+    dpkg-query -W -f='${db:Status-Status}' "$1" 2>/dev/null | grep -qx installed
+}
+
+# Holding a lease right now (ifupdown, NetworkManager with dhclient, by hand).
+if pgrep -x dhclient >/dev/null; then
+    echo "dhclient is running"
+    exit 0
+fi
+
+# ifupdown would start it at the next boot, unless dhcpcd-base takes over.
+if ! installed dhcpcd-base \
+    && grep -rqsE '^\s*iface\s+\S+\s+(inet|inet6)\s+dhcp\b|^\s*iface\s+\S+\s+inet6\s+auto\b' \
+        /etc/network/interfaces /etc/network/interfaces.d; then
+    echo "ifupdown uses DHCP and dhcpcd-base is not installed"
+    exit 0
+fi
+
+# Removing it must not take other packages along.
+others=$(apt-get -s -o Debug::NoLocking=1 remove isc-dhcp-client isc-dhcp-common 2>/dev/null \
+    | sed -n 's/^Remv \([^ ]*\).*/\1/p' | grep -vxE 'isc-dhcp-(client|common)(:[a-z0-9]+)?' || true)
+if [ -n "$others" ]; then
+    echo "other packages depend on it:" $others
+    exit 0
+fi
+
+exit 1

@@ -7,3 +7,20 @@ unattended_upgrades_automatic_reboot_time: "04:00"
 
 # Remove kernels and dependencies that are no longer needed.
 unattended_upgrades_remove_unused: true
+
+# Security support status (debian-security-support): a weekly check of which
+# installed packages Debian's security team no longer fully supports, as the
+# metric sovereign_security_support_affected_packages{type=...} (alert if
+# above 0). Binary packages listed here are left out; give a reason for each,
+# e.g. "isc-dhcp-client: installed but unused, networking is systemd-networkd".
+unattended_upgrades_support_exceptions: []
+unattended_upgrades_support_on_calendar: weekly
+unattended_upgrades_metrics_dir: "{{ node_exporter_textfile_dir | default('/var/lib/prometheus/node-exporter') }}"
+
+# Picked up by the systemd_timers role.
+unattended_upgrades_timer_jobs:
+  - name: support-status
+    description: Check the security support status of installed packages
+    command: /usr/local/sbin/sovereign-support-status
+    on_calendar: "{{ unattended_upgrades_support_on_calendar }}"
+    randomized_delay: 1h
