@@ -114,3 +114,12 @@
     mode: "0755"
   # The timer runs weekly; check once now, so the metric exists from the start.
   notify: Check the security support status
+
+- name: Install the pending reboot check
+  ansible.builtin.template:
+    src: sovereign-reboot-pending.j2
+    dest: /usr/local/sbin/sovereign-reboot-pending
+    owner: root
+    group: root
+    mode: "0755"
+  notify: Check for a pending reboot

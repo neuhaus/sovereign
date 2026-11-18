@@ -17,6 +17,12 @@ unattended_upgrades_support_exceptions: []
 unattended_upgrades_support_on_calendar: weekly
 unattended_upgrades_metrics_dir: "{{ node_exporter_textfile_dir | default('/var/lib/prometheus/node-exporter') }}"
 
+# Hourly: whether a kernel or microcode update waits for a reboot. The first
+# time, root (the postmaster) gets a mail; the metric
+# sovereign_reboot_pending_since_timestamp_seconds says since when (the
+# example alert fires at once). That time is kept in this file.
+unattended_upgrades_reboot_state: /var/lib/sovereign/reboot-pending-since
+
 # Picked up by the systemd_timers role.
 unattended_upgrades_timer_jobs:
   - name: support-status
@@ -24,3 +30,7 @@ unattended_upgrades_timer_jobs:
     command: /usr/local/sbin/sovereign-support-status
     on_calendar: "{{ unattended_upgrades_support_on_calendar }}"
     randomized_delay: 1h
+  - name: reboot-pending
+    description: Check whether a kernel or microcode update waits for a reboot
+    command: /usr/local/sbin/sovereign-reboot-pending
+    on_calendar: hourly

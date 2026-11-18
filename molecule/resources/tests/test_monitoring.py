@@ -6,6 +6,7 @@ promtool runs on the dns instance (installed in prepare.yml).
 import base64
 import pathlib
 import re
+import time
 
 import pytest
 import yaml
@@ -39,7 +40,7 @@ def test_every_metric_in_the_rules_exists(host, sovtest_vars):
     # Run every job that writes a textfile metric once, so the test does not
     # depend on timers or on the order of the test files.
     backups = not without_restic(sovtest_vars)
-    for unit in ("sovereign-mailqueue-metrics", "sovereign-support-status") + (("sovereign-backup", "sovereign-backup-check") if backups else ()):
+    for unit in ("sovereign-mailqueue-metrics", "sovereign-support-status", "sovereign-reboot-pending") + (("sovereign-backup", "sovereign-backup-check") if backups else ()):
         host.check_output("systemctl start %s.service", unit)
     rules = yaml.safe_load((MONITORING / "alerts.yml").read_text())
     used = set()
@@ -128,3 +129,41 @@ def test_node_exporter_drops_other_addresses_itself(host, sovtest_vars):
     assert host.run("curl --silent --fail --max-time 5 http://127.0.0.1:9100/metrics -o /dev/null").rc == 0
     blocked = host.run("curl --silent --max-time 5 --interface %s http://%s:9100/metrics -o /dev/null", mail, mail)
     assert blocked.rc != 0, "the exporter answered a non-monitoring address"
+
+
+def test_pending_reboot_mails_the_postmaster_once(host, sovtest_vars):
+    # A pending kernel update: one mail to root (-> postmaster -> alice in
+    # Molecule) right away, and the time it was first seen, which stays until
+    # the reboot; then the metric drops to 0.
+    kernel = "sovtest-%d" % int(time.time())
+    status = "NEEDRESTART-KSTA: 3\nNEEDRESTART-KCUR: 1.0-old\nNEEDRESTART-KEXP: %s\n" % kernel
+    check = "SOVEREIGN_REBOOT_STATUS=\"$(printf %%b %s)\" /usr/local/sbin/sovereign-reboot-pending"
+    since = r"^sovereign_reboot_pending_since_timestamp_seconds (\d+)$"
+    alice = "alice@" + sovtest_vars["sovtest_domain"]
+
+    def mails():
+        return host.run("doveadm search -u %s mailbox INBOX header subject %s", alice, kernel).stdout.splitlines()
+
+    try:
+        host.check_output(check, status)
+        first = int(re.search(since, metrics(host), re.M).group(1))
+        assert first > 0
+        for _ in range(30):
+            if mails():
+                break
+            time.sleep(2)
+        host.check_output(check, status)
+        assert int(re.search(since, metrics(host), re.M).group(1)) == first
+        time.sleep(5)
+        assert len(mails()) == 1, mails()
+        host.check_output(check, "NEEDRESTART-KSTA: 1")
+        assert int(re.search(since, metrics(host), re.M).group(1)) == 0
+    finally:
+        host.run("rm -f /var/lib/sovereign/reboot-pending-since")
+        host.run("systemctl start sovereign-reboot-pending.service")
+
+
+def test_no_reboot_pending_after_converge(host):
+    # The test VMs run the newest installed kernel; a container reports 0.
+    host.check_output("systemctl start sovereign-reboot-pending.service")
+    assert re.search(r"^sovereign_reboot_pending_since_timestamp_seconds 0$", metrics(host), re.M)

@@ -165,6 +165,22 @@ groups:
           summary: "{{ $labels.instance }}: {{ $value }} packages with {{ $labels.type }} security support"
           description: "journalctl -u sovereign-support-status names them; see docs/ADMINISTRATION.md."
 
+      - alert: SovereignRebootPending
+        expr: sovereign_reboot_pending_since_timestamp_seconds > 0
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.instance }}: a kernel or microcode update waits for a reboot"
+          description: "Security fixes in the kernel take effect only after a reboot; see docs/ADMINISTRATION.md."
+
+      - alert: SovereignRebootCheckNotRun
+        expr: time() - sovereign_reboot_check_last_run_timestamp_seconds > 86400
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.instance }}: pending reboots not checked for over a day"
+          description: "journalctl -u sovereign-reboot-pending; the check runs hourly."
+
       - alert: SovereignSupportStatusNotChecked
         expr: time() - sovereign_security_support_last_run_timestamp_seconds > 8 * 86400
         labels:

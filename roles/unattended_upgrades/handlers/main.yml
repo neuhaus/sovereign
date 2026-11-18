@@ -3,3 +3,8 @@
   ansible.builtin.command:
     argv: [/usr/local/sbin/sovereign-support-status]
   changed_when: true
+
+- name: Check for a pending reboot
+  ansible.builtin.command:
+    argv: [/usr/local/sbin/sovereign-reboot-pending]
+  changed_when: true

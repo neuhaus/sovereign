@@ -1,0 +1,62 @@
+#!/bin/bash
+# {{ ansible_managed }}
+# Whether a kernel or CPU microcode update waits for a reboot (needrestart):
+# unattended upgrades install them, but they only take effect after a reboot,
+# which needs a remote disk unlock on encrypted servers and so isn't
+# automatic by default. The first time it sees one, it mails root (the
+# postmaster); node_exporter gets since when it has been waiting.
+#
+# For the tests: SOVEREIGN_REBOOT_STATUS replaces needrestart's batch output.
+set -euo pipefail
+
+file={{ unattended_upgrades_metrics_dir }}/sovereign_reboot.prom
+state={{ unattended_upgrades_reboot_state }}
+
+status=${SOVEREIGN_REBOOT_STATUS-$(needrestart -b -k -w -r l)}
+# Kernel: 0 unknown, 1 current, 2 ABI-compatible update, 3 new version.
+# Microcode: 0 unknown, 1 current, 2 obsolete.
+kernel=$(sed -n 's/^NEEDRESTART-KSTA: *//p' <<<"$status")
+microcode=$(sed -n 's/^NEEDRESTART-UCSTA: *//p' <<<"$status")
+running=$(sed -n 's/^NEEDRESTART-KCUR: *//p' <<<"$status")
+installed=$(sed -n 's/^NEEDRESTART-KEXP: *//p' <<<"$status")
+
+if [ "${kernel:-0}" -ge 2 ] || [ "${microcode:-0}" -eq 2 ]; then
+    # Mail first, then record: if sending fails, the unit fails and the next
+    # run tries again.
+    if [ ! -s "$state" ]; then
+        update=${installed:+kernel $installed}
+        /usr/sbin/sendmail -t <<MAIL
+To: root
+Subject: Reboot needed on $(hostname --fqdn): ${update:-kernel or microcode update}
+
+A kernel or CPU microcode update is installed on $(hostname --fqdn), but
+takes effect only after a reboot. Until then the server runs without its
+security fixes.
+
+Running kernel:   ${running:-unknown}
+Installed kernel: ${installed:-unknown}
+Microcode status: ${microcode:-unknown} (2: an update waits)
+
+Reboot when convenient, and unlock the disk remotely if it is encrypted
+(docs/ADMINISTRATION.md). This mail is sent once per pending update.
+MAIL
+        mkdir -p "$(dirname "$state")"
+        date +%s > "$state"
+    fi
+    since=$(cat "$state")
+    echo "reboot pending since $(date -d "@$since" '+%F %R'): kernel status ${kernel:-?}, microcode status ${microcode:-?}"
+else
+    rm -f "$state"
+    since=0
+fi
+
+cat > "$file.new" <<METRICS
+# HELP sovereign_reboot_pending_since_timestamp_seconds Since when a kernel or microcode update waits for a reboot; 0 if none.
+# TYPE sovereign_reboot_pending_since_timestamp_seconds gauge
+sovereign_reboot_pending_since_timestamp_seconds $since
+# HELP sovereign_reboot_check_last_run_timestamp_seconds When pending reboots were last checked.
+# TYPE sovereign_reboot_check_last_run_timestamp_seconds gauge
+sovereign_reboot_check_last_run_timestamp_seconds $(date +%s)
+METRICS
+chmod 0644 "$file.new"
+mv "$file.new" "$file"

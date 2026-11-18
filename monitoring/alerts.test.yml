@@ -160,3 +160,23 @@ tests:
             exp_annotations:
               summary: "mail: 2 packages with ended security support"
               description: "journalctl -u sovereign-support-status names them; see docs/ADMINISTRATION.md."
+
+  # A kernel update waits for a reboot: alert right away, and only for the
+  # server where it waits (0: none).
+  - interval: 1m
+    input_series:
+      - series: 'sovereign_reboot_pending_since_timestamp_seconds{instance="mail"}'
+        values: '0 0 60x10'
+      - series: 'sovereign_reboot_pending_since_timestamp_seconds{instance="other"}'
+        values: '0x12'
+    alert_rule_test:
+      - eval_time: 1m
+        alertname: SovereignRebootPending
+        exp_alerts: []
+      - eval_time: 2m
+        alertname: SovereignRebootPending
+        exp_alerts:
+          - exp_labels: {instance: mail, severity: warning}
+            exp_annotations:
+              summary: "mail: a kernel or microcode update waits for a reboot"
+              description: "Security fixes in the kernel take effect only after a reboot; see docs/ADMINISTRATION.md."
