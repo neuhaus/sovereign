@@ -18,6 +18,8 @@ nginx logs to `/var/log/nginx/sovereign/` with its own rule (daily, 30 days, com
 
 ## openssh
 
+Algorithms are OpenSSH's defaults, minus some MACs: HMAC-SHA-1 (BSI TR-02102-4 dropped it in 2020), UMAC-64 (a 64-bit tag is below BSI's 120-bit level) and every MAC without ETM. RSA keys need at least 3072 bits (`openssh_required_rsa_size`); the role stops first if the login user would be left without an accepted key. OpenSSH 10's defaults deviate from TR-02102-4 2026-01 on purpose: the post-quantum hybrid `mlkem768x25519` key exchange, ChaCha20-Poly1305, UMAC and Ed25519 keys aren't on BSI's list, and BSI's own planned hybrids (`mlkem768nistp256`, `mlkem1024nistp384`) aren't in OpenSSH yet.
+
 Key logins only, through a drop-in that sorts first, because the first value of a setting wins in `sshd_config` and this way it also beats files such as cloud-init's.
 
 The risk with this role is locking the admin out of a remote server, so it first checks that the connecting user has a key, and stops if not. The check can only show that a key file has content, not that the key is the right one, so the README also asks you to test your key first.

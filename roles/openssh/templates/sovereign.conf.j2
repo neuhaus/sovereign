@@ -2,3 +2,11 @@
 # Key logins only. Passwords can be guessed; keys cannot.
 PasswordAuthentication no
 KbdInteractiveAuthentication no
+# OpenSSH's own algorithm defaults, minus some MACs. The "-" removes them
+# from the built-in list, so later OpenSSH defaults still apply. Gone:
+# HMAC-SHA-1 (BSI TR-02102-4 dropped it in 2020), UMAC-64 (a 64-bit tag is
+# below BSI's 120-bit level), and all MACs without ETM (they authenticate
+# the plaintext; every OpenSSH client since 6.2 offers ETM).
+MACs -hmac-sha1,hmac-sha1-etm@openssh.com,umac-64-etm@openssh.com,umac-64@openssh.com,umac-128@openssh.com,hmac-sha2-256,hmac-sha2-512
+# RSA keys below this size are refused (OpenSSH's own minimum is 1024).
+RequiredRSASize {{ openssh_required_rsa_size }}

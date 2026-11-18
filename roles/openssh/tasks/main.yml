@@ -33,6 +33,24 @@
       Add your public key first, or you would be locked out of this server.
     quiet: true
 
+# ssh-keygen -l prints "<bits> <fingerprint> <comment> (<type>)" per key.
+# At least one key must survive RequiredRSASize; OpenSSH 10 no longer
+# accepts DSA at all.
+- name: Assert that the login user has a key sshd will accept
+  ansible.builtin.assert:
+    that:
+      - >-
+        (openssh_key_list.stdout_lines | reject('search', '[(](RSA|DSA)[)]$') | list
+         + openssh_key_list.stdout_lines | select('search', '[(]RSA[)]$')
+           | map('regex_replace', ' .*$', '') | map('int')
+           | select('ge', openssh_required_rsa_size | int) | list) | length > 0
+    fail_msg: >-
+      All of {{ openssh_login_user }}'s keys are RSA keys shorter than
+      {{ openssh_required_rsa_size }} bits (or DSA keys), which sshd will refuse.
+      Add an Ed25519 key (ssh-keygen -t ed25519) or an RSA key of at least
+      {{ openssh_required_rsa_size }} bits first, or you would be locked out of this server.
+    quiet: true
+
 - name: Install openssh-server
   ansible.builtin.apt:
     name: openssh-server
