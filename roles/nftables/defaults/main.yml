@@ -1,16 +1,8 @@
 ---
-# TCP ports open to everyone: SSH, SMTP, HTTP, IMAP, HTTPS, submissions, submission, IMAPS
-# and ManageSieve.
-nftables_open_tcp_ports:
-  - 22
-  - 25
-  - 80
-  - 143
-  - 443
-  - 465
-  - 587
-  - 993
-  - 4190
+# TCP ports open to everyone: SSH, SMTP, HTTP, IMAP, HTTPS, submissions,
+# submission, IMAPS, and ManageSieve (4190) only with managesieve_external
+# (otherwise Dovecot listens on loopback only, for Roundcube).
+nftables_open_tcp_ports: "{{ [22, 25, 80, 143, 443, 465, 587, 993] + ([4190] if managesieve_external | default(false) | bool else []) }}"
 
 # Exporter ports, reachable only from the monitoring hosts below.
 nftables_monitoring_tcp_ports:

@@ -167,6 +167,7 @@ service indexer-worker {
 {% endif %}
 
 # --- Sieve (delivery filters, managed via ManageSieve on 4190) ---------------
+# ManageSieve listens on loopback only unless managesieve_external is set.
 sieve_script personal {
   driver = file
   path = ~/sieve
@@ -214,6 +215,10 @@ service imap-login {
 service managesieve-login {
   inet_listener sieve {
     port = 4190
+{% if not dovecot_managesieve_external | bool %}
+    # Loopback only: Roundcube is the only client (managesieve_external).
+    listen = 127.0.0.1
+{% endif %}
   }
 }
 

@@ -55,3 +55,10 @@ dovecot_postfix_spool: /var/spool/postfix
 # Prometheus/OpenMetrics endpoint of Dovecot's stats service. The firewall
 # opens it for `monitoring_sources` only.
 dovecot_metrics_port: 9900
+
+# ManageSieve (filter rules, port 4190) only on loopback, for Roundcube's
+# filter settings. Set managesieve_external: true in the inventory for
+# clients that edit filters themselves (Thunderbird's Sieve add-on,
+# Evolution); the nftables role then opens the port too. Apple Mail, iOS,
+# Outlook and the Android clients don't use ManageSieve.
+dovecot_managesieve_external: "{{ managesieve_external | default(false) }}"

@@ -256,10 +256,12 @@ def test_filter_settings_reach_managesieve(client, ctx):
     assert result["ok"], result
 
 
-def test_managesieve_starttls_and_authentication(client, ctx):
-    result = client("sieve-login", ctx["ip"], ctx["alice"], ALICE)
+def test_managesieve_starttls_and_authentication(host, ctx):
+    # On loopback, where Roundcube connects; from outside 4190 is closed.
+    local = mail_client(host)
+    result = local("sieve-login", "127.0.0.1", ctx["alice"], ALICE)
     assert result["starttls"].startswith("OK") and result["ok"], result
-    assert not client("sieve-login", ctx["ip"], ctx["alice"], "wrong-password")["ok"]
+    assert not local("sieve-login", "127.0.0.1", ctx["alice"], "wrong-password")["ok"]
 
 
 # --- Password self-service ----------------------------------------------------

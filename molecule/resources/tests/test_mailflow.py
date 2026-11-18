@@ -244,8 +244,15 @@ def test_submissions_uses_the_acme_certificate(host, ctx):
     assert served == host.check_output("openssl x509 -in %s -noout -fingerprint -sha256", ctx["cert"])
 
 
-def test_managesieve_offers_starttls(client, ctx):
-    assert client("sieve", ctx["mail_ip"])["starttls"]
+def test_managesieve_offers_starttls_on_loopback(host):
+    # Loopback only (Roundcube); the firewall and listener tests check that
+    # nothing answers on 4190 from outside.
+    assert mail_client(host)("sieve", "127.0.0.1")["starttls"]
+
+
+def test_managesieve_listens_only_on_loopback(host):
+    sockets = [line.split()[3] for line in host.check_output("ss --listening --numeric --tcp").splitlines()[1:] if line.split()[3].endswith(":4190")]
+    assert sockets == ["127.0.0.1:4190"], sockets
 
 
 # TLS versions on all mail ports

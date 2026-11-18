@@ -74,7 +74,7 @@ Implementation order: 2.1, 2.2, the certificate part of 2.5, 2.3, 2.4, rest of 2
 
 - **Time:** systemd-timesyncd, servers from `ntp_servers`, otherwise Debian's default pool.
 - **SSH:** key logins only (`openssh` role). The role stops if the connecting user has no key, so that it cannot lock anyone out.
-- **Firewall:** nftables role. `/etc/nftables.conf` allows TCP 22, 25, 80, 143, 443, 465, 587, 993 and 4190, dropping everything else. Only Sovereign's own table is replaced on reload, so fail2ban's table and bans survive.
+- **Firewall:** nftables role. `/etc/nftables.conf` allows TCP 22, 25, 80, 143, 443, 465, 587 and 993 (4190 only with `managesieve_external`), dropping everything else. Only Sovereign's own table is replaced on reload, so fail2ban's table and bans survive.
 - **Task scheduling:** systemd-timers role replacing all cron functionality (timers no longer defined are removed).
 - **Intrusion prevention:** Fail2ban with the systemd backend (journald), nftables ban actions; jails for sshd, Postfix (aggressive mode) and Dovecot. The sshd filter also counts OpenSSH's own penalty drops (OpenSSH >= 10.1).
 - **Updates:** unattended-upgrades for automated security patches (on Debian 13 also for packages installed from backports); automatic reboot is opt-in because of the LUKS remote unlock.
@@ -216,7 +216,7 @@ Rewrite the README and Wiki to reflect the modernized, bare-metal deployment str
   - TCP 465: message submission (implicit TLS)
   - TCP 587: message submission (STARTTLS)
   - TCP 993: IMAPS (implicit TLS mail retrieval)
-  - TCP 4190: ManageSieve (filter configuration)
+  - TCP 4190: ManageSieve (filter configuration), only with `managesieve_external`; otherwise loopback only, for Roundcube
   - TCP 9100, 9900: metrics, monitoring hosts only
 - **Operations notes:** Rspamd web UI via SSH tunnel; what mail_crypt does and does not encrypt; memory settings for small servers.
 - **Backup & restore operations (Restic):**
