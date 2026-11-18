@@ -68,7 +68,22 @@ A module should configure the server in a way that minimizes the data posted to 
 
 ### Upgrades
 
-A module's design should anticipate upgrades to the services it provides. Configuration files that work for the current version of the service may become out of date on future versions of the service and lead to difficult-to-find bugs. This also introduces work for maintaining the module.  Whenever possible, design the module to use the service to handle initial configuration and upgrades.
+A module's design should anticipate upgrades to the services it provides. Configuration files that work for the current version of the service may become out of date on future versions of the service and lead to difficult-to-find bugs. This also introduces work for maintaining the module.  Whenever possible, design the module to use the service to handle initial configuration and upgrades. Leave Debian's conffiles as shipped (`dpkg --verify <package>` stays empty): an edited conffile makes dpkg ask when an update changes it. Put the settings in a file of the role's own and point the service at it with a drop-in, an include or a configuration directory; a role that used to edit a conffile restores it with the `conffile_restore` role.
+
+### Hardening
+
+Every service a module adds must get the same level of hardening as the existing ones. This is a requirement, not a review suggestion: a new service without it would be the weakest point of the server. The reference implementations are the drop-ins in `roles/*/templates/hardening.conf.j2`, explained per role in [docs/ROLES.md](docs/ROLES.md).
+
+- **Systemd sandbox** (`/etc/systemd/system/<unit>.service.d/sovereign-hardening.conf`): `ProtectSystem=strict` with write access only where the service writes, `ProtectHome`, `PrivateTmp`, `PrivateDevices` where possible, `NoNewPrivileges`, `RestrictSUIDSGID`, the kernel and namespace protections, `SystemCallFilter=@system-service` (plus what the service provably needs), `SystemCallArchitectures=native`, `MemoryDenyWriteExecute` unless the service has a JIT, and `ProtectProc=invisible` unless it must see other processes.
+- **Fewest capabilities:** `CapabilityBoundingSet=` lists exactly what the service needs, each one justified in a comment. Prefer runtime directories, group membership or socket permissions over `CAP_DAC_OVERRIDE`.
+- **Read restrictions:** `/var`, `/srv`, `/opt`, `/mnt` and `/media` as an allowlist (`TemporaryFileSystem=` plus `BindPaths=`/`BindReadOnlyPaths=` for the service's own directories), and other services' secrets in `/etc` hidden with `InaccessiblePaths=` (TLS keys only for services that terminate TLS).
+- **Network:** listen on a Unix socket or loopback unless the service is meant to be reached from outside; `RestrictAddressFamilies=` limited to what it uses; `IPAddressDeny=any` with `IPAddressAllow=` for a service that needs no outgoing connections, or only to known peers. A loopback port without authentication gets an nftables owner rule (`/etc/nftables.d/sovereign-output/`) so that only its intended users reach it.
+- **A port open to the outside** goes into the nftables role, the README's port table and the listener test. A login it offers gets a fail2ban jail, with the client's real address.
+- **Settings in files of the role's own,** not in Debian's conffiles: a drop-in, an include or a `--config` argument (see the Upgrades principle).
+- **Tests:** add the unit to the sandbox and secrets tests in `test_mail.py`, check its capability set exactly, and for an IP filter, that an outgoing connection from its cgroup fails. The service's functional tests show that the sandbox leaves it working.
+- **Measure it:** `systemd-analyze security <unit>` should end up around 3 or lower. If it can't, the role's chapter in ROLES.md says why (e.g. sshd must give the admin a root shell).
+
+Where a restriction breaks the service, find the narrowest exception that works and document it in the drop-in; don't drop the restriction.
 
 ### Performance
 
@@ -95,7 +110,10 @@ Consider the following checklist when reviewing a module's design.
 - Does the role need a certificate for a new host name? If so, add it to `certbot_domains`; the certbot role reissues the certificate with the same key.
 - Does the role add an nginx site? If so, it includes `/etc/nginx/snippets/sovereign-tls.conf` for HTTPS, its host names are in `certbot_domains`, it notifies `Nginx configuration changed` (handled by the nginx role, do not redefine it), and somebody knowledgeable in nginx configuration and security has reviewed it.
 - Can the role's service write to a directory containing something root executes? SQLite writers need write access to the database's directory, so keep that directory separate.
-- Does the role open a port? If so, update the nftables role and the firewall tests.
+- Does the role add a service? It gets the hardening described under [Hardening](#hardening), with tests, before it is merged.
+- Does the role open a port? If so, update the nftables role, the README's port table and the firewall and listener tests.
+- Does the role change a Debian conffile? Use a file of its own instead (see [Upgrades](#upgrades)).
+- Does the service need to tell the admin something? Mail `root` (it reaches the postmaster) and export a metric with an example alert, like the reboot and TLSA checks.
 - Does README.md need to be updated based on new or changed finalization instructions?
 
 ## Submitting pull requests

@@ -2,7 +2,7 @@
 
 How each role works and why, in the order `site.yml` runs them. This covers decisions and tradeoffs; settings are explained in each role's `defaults/main.yml`.
 
-A few rules apply throughout: Debian packages only, every handler checks the configuration before it restarts a service, and each role is named after the software it configures, or after the mechanism if it is not one package.
+A few rules apply throughout: Debian packages only, every handler checks the configuration before it restarts a service, Debian's conffiles stay as shipped, and each role is named after the software it configures, or after the mechanism if it is not one package. **Every service gets the same hardening** (systemd sandbox, fewest capabilities, read restrictions, network limits, tests); this applies to any service added later as well, see [Hardening in CONTRIBUTING.md](../CONTRIBUTING.md#hardening).
 
 ## preflight
 
