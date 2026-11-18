@@ -322,12 +322,26 @@ def test_rspamd_controller_password_is_not_debians_default(host):
     assert 'password = "$2$' in dump
 
 
-def test_rspamd_controller_and_redis_local_only(host):
+def test_rspamd_controller_local_only(host):
     listening = host.check_output("ss --listening --numeric --tcp")
-    for port in (":11334", ":11332", ":6379"):
+    for port in (":11334", ":11332"):
         sockets = [line.split()[3] for line in listening.splitlines()[1:] if line.split()[3].endswith(port)]
         assert sockets, port
         assert all(s.startswith(("127.", "[::1]")) for s in sockets), sockets
+
+
+def test_redis_only_on_its_socket(host):
+    # No TCP at all: Redis has no password, so on loopback every local process
+    # could read and change the statistics.
+    redis = [line for line in host.check_output("ss --listening --numeric --tcp --processes").splitlines() if "redis" in line]
+    assert not redis, redis
+    path = "/run/redis/redis-server.sock"
+    sock = host.file(path)
+    assert sock.is_socket and (sock.user, sock.group, sock.mode) == ("redis", "redis", 0o770)
+    assert host.check_output("runuser -u _rspamd -- redis-cli -s %s ping", path) == "PONG"
+    assert host.check_output("runuser -u _rspamd -- redis-cli -s %s config get maxmemory", path).split()[-1] == str(256 * 1024 * 1024)
+    # Anyone else is refused.
+    assert host.run("runuser -u nobody -- redis-cli -s %s ping", path).rc != 0
 
 
 def test_dkim_key_permissions(host, ctx):

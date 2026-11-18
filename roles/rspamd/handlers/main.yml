@@ -1,5 +1,11 @@
 ---
-# Handlers run in the order they are defined: check first, then restart.
+# Handlers run in the order they are defined: redis first (rspamd connects
+# to its socket), then check and restart rspamd.
+- name: Restart redis
+  ansible.builtin.systemd_service:
+    name: redis-server
+    state: restarted
+
 - name: Check rspamd configuration
   ansible.builtin.command:
     argv: [rspamadm, configtest]
@@ -11,8 +17,3 @@
     name: rspamd
     state: restarted
   listen: Rspamd configuration changed
-
-- name: Restart redis
-  ansible.builtin.systemd_service:
-    name: redis-server
-    state: restarted

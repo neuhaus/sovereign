@@ -44,3 +44,5 @@ rspamd_clamav_servers: ""
 
 # Redis (Bayes statistics, rate limits). Memory cap for small servers.
 rspamd_redis_maxmemory: 256mb
+# Redis listens only here (no TCP); /run/redis is Redis's RuntimeDirectory.
+rspamd_redis_socket: /run/redis/redis-server.sock

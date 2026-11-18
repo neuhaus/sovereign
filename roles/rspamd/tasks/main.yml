@@ -8,16 +8,33 @@
     update_cache: true
     cache_valid_time: 3600
 
-# Redis keeps the Bayes statistics and rate limit buckets; cap its memory.
-- name: Limit redis memory
+# Redis keeps the Bayes statistics and rate limit buckets: capped memory,
+# and only a Unix socket that the redis group may use, no TCP port. Redis has
+# no password here, so on TCP every local process could read and change the
+# statistics. redis.conf is not a conffile (redis-server creates it on
+# install), so editing it doesn't stop unattended upgrades.
+- name: Configure redis
   ansible.builtin.lineinfile:
     path: /etc/redis/redis.conf
-    regexp: "^#? *{{ item.key }} "
-    line: "{{ item.key }} {{ item.value }}"
+    regexp: "{{ item.regexp }}"
+    line: "{{ item.line }}"
   loop:
-    - {key: maxmemory, value: "{{ rspamd_redis_maxmemory }}"}
-    - {key: maxmemory-policy, value: volatile-ttl}
+    - {regexp: "^#? *maxmemory ", line: "maxmemory {{ rspamd_redis_maxmemory }}"}
+    - {regexp: "^#? *maxmemory-policy ", line: "maxmemory-policy volatile-ttl"}
+    # Only the active line: the file also has a commented "# port 0".
+    - {regexp: "^port ", line: "port 0"}
+    - {regexp: "^#? *unixsocket ", line: "unixsocket {{ rspamd_redis_socket }}"}
+    - {regexp: "^#? *unixsocketperm ", line: "unixsocketperm 770"}
+  loop_control:
+    label: "{{ item.line }}"
   notify: Restart redis
+
+- name: Let rspamd use the redis socket
+  ansible.builtin.user:
+    name: _rspamd
+    groups: [redis]
+    append: true
+  notify: Rspamd configuration changed
 
 - name: Enable redis
   ansible.builtin.systemd_service:
