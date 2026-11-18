@@ -144,17 +144,50 @@
   changed_when: true
   notify: Postfix configuration changed
 
+- name: Check for the aliases table
+  ansible.builtin.stat:
+    path: /etc/aliases.lmdb
+  register: postfix_aliases_db
+
+# /etc/aliases belongs to no package (Postfix's postinst creates it).
+- name: Forward root's mail to the postmaster
+  ansible.builtin.lineinfile:
+    path: /etc/aliases
+    regexp: "^root:"
+    line: "root: {{ postfix_root_alias }}"
+  register: postfix_aliases
+
 - name: Build the aliases table
   ansible.builtin.command:
     argv: [newaliases]
-    creates: /etc/aliases.lmdb
+  when: postfix_aliases is changed or not (postfix_aliases_db.stat.exists | default(false))
+  changed_when: true
   notify: Postfix configuration changed
 
+- name: Create the postfix drop-in directory
+  ansible.builtin.file:
+    path: /etc/systemd/system/postfix@-.service.d
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Sandbox postfix
+  ansible.builtin.template:
+    src: hardening.conf.j2
+    dest: /etc/systemd/system/postfix@-.service.d/sovereign-hardening.conf
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Postfix configuration changed
+
+# daemon_reload: the sandbox drop-in must be loaded before the first start.
 - name: Enable postfix
   ansible.builtin.systemd_service:
     name: postfix
     state: started
     enabled: true
+    daemon_reload: true
 
 - name: Install the queue measurement
   ansible.builtin.template:

@@ -1,0 +1,22 @@
+# {{ ansible_managed }}
+# Tightens Debian's sandbox for Postfix where Debian's unit says it can be,
+# when all mail goes to Dovecot over LMTP: no local(8) delivery to home
+# directories, no procmail, no ~/.forward programs (local(8) only expands
+# /etc/aliases). Hence no new privileges, no setuid files, no CAP_CHOWN.
+[Service]
+NoNewPrivileges=yes
+RestrictSUIDSGID=yes
+# Debian's set without CAP_CHOWN (only needed for procmail and /var/mail).
+# CAP_DAC_OVERRIDE stays: the spool's private and public directories rely on it.
+CapabilityBoundingSet=
+CapabilityBoundingSet=CAP_NET_BIND_SERVICE CAP_SYS_CHROOT CAP_SETGID CAP_SETUID CAP_DAC_OVERRIDE CAP_DAC_READ_SEARCH
+ProtectHome=yes
+PrivateTmp=yes
+ProtectSystem=strict
+# Allowlist: an empty /var with only the queue, Postfix's state and the mail
+# database (read-only, for the SQLite maps).
+TemporaryFileSystem=/var:ro /srv:ro /opt:ro /mnt:ro /media:ro
+BindPaths=/var/spool/postfix /var/lib/postfix
+BindReadOnlyPaths={{ postfix_maildb_path | dirname }}
+ReadWritePaths=/var/spool/postfix /var/lib/postfix
+InaccessiblePaths={{ postfix_inaccessible_paths | map('regex_replace', '^', '-') | join(' ') }}

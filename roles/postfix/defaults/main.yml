@@ -49,3 +49,21 @@ postfix_timer_jobs:
 # enforced by Postfix itself before fail2ban has read a log line. Generous
 # enough for an office behind one address.
 postfix_auth_rate_limit: 30
+
+# Hidden from Postfix (systemd InaccessiblePaths). Under /var it sees only the
+# queue, its state and the mail database anyway (an allowlist); in /etc these
+# are other services' secrets. It keeps /etc/letsencrypt for its TLS keys.
+# Missing paths are skipped.
+postfix_inaccessible_paths:
+  - /etc/ssl/private
+  - /etc/dovecot
+  - /etc/restic
+  - /etc/postsrsd.secret
+  - /etc/nginx
+  - /etc/radicale
+  - /etc/roundcube
+  - /etc/rspamd
+
+# Mail to root (cron, unattended-upgrades, the system) goes here instead of
+# /var/mail/root, which nobody reads.
+postfix_root_alias: "postmaster@{{ postfix_srs_domain }}"

@@ -1,6 +1,7 @@
 """Phase 0 smoke tests for the system under test."""
 
 import json
+import time
 
 import pytest
 
@@ -59,7 +60,7 @@ def test_pebble_issuance_root_trusted(host):
 
 # Sandboxing of the services that handle untrusted input (rspamd, PHP-FPM).
 # That they still work is covered by the mail flow, spam and webmail tests.
-@pytest.mark.parametrize("unit", ["rspamd.service", "php*-fpm.service"])
+@pytest.mark.parametrize("unit", ["rspamd.service", "php*-fpm.service", "postfix@-.service"])
 def test_service_sandboxed(host, unit):
     name = host.check_output("systemctl list-units --type=service --all --no-legend --plain %s | cut -d' ' -f1", unit).split()[0]
     props = dict(
@@ -96,17 +97,23 @@ SECRETS = [
     "/var/vmail", "/var/lib/sovereign", "/var/lib/radicale", "/var/backups/sovereign", "/var/lib/redis",
     "/etc/restic", "/etc/letsencrypt", "/etc/ssl/private", "/etc/dovecot", "/etc/postsrsd.secret", "/etc/nginx",
 ]
-OTHER_SERVICE = {"rspamd.service": ["/var/lib/php/sessions", "/var/lib/roundcube-sovereign", "/etc/roundcube"], "php*-fpm.service": ["/var/lib/rspamd", "/etc/rspamd"]}
+OTHER_SERVICE = {
+    "rspamd.service": ["/var/lib/php/sessions", "/var/lib/roundcube-sovereign", "/etc/roundcube"],
+    "php*-fpm.service": ["/var/lib/rspamd", "/etc/rspamd"],
+    "postfix@-.service": ["/var/lib/rspamd", "/var/lib/php/sessions", "/etc/roundcube", "/var/lib/sovereign/mobileconfig"],
+}
+# What a service legitimately reads: Postfix the mail database and its TLS keys.
+NEEDED = {"postfix@-.service": ["/var/lib/sovereign", "/etc/letsencrypt"]}
 
 
-@pytest.mark.parametrize("unit", ["rspamd.service", "php*-fpm.service"])
+@pytest.mark.parametrize("unit", ["rspamd.service", "php*-fpm.service", "postfix@-.service"])
 def test_service_cannot_see_secrets(host, unit):
     # Inside the service's mount namespace each path is either gone (the
     # empty /var) or an empty node with mode 0, so even its root master sees
     # nothing there.
     pid = host.check_output("systemctl show -p MainPID --value %s", service_name(host, unit))
     checked = []
-    for path in SECRETS + OTHER_SERVICE[unit]:
+    for path in [p for p in SECRETS if p not in NEEDED.get(unit, [])] + OTHER_SERVICE[unit]:
         if not host.file(path).exists:
             continue
         inside = host.run(
@@ -116,4 +123,27 @@ def test_service_cannot_see_secrets(host, unit):
         assert inside.rc == 0 and inside.stdout.splitlines() in ([], ["0"]), (path, inside.stdout[:200], inside.stderr)
         checked.append(path)
     # The ones that matter most must exist here, or the test proves nothing.
-    assert {"/var/vmail", "/var/lib/sovereign", "/etc/letsencrypt"} <= set(checked), checked
+    assert {"/var/vmail", "/var/lib/radicale", "/etc/restic"} <= set(checked), checked
+
+
+def test_postfix_capabilities(host):
+    # Debian's set without CAP_CHOWN (no procmail, no /var/mail delivery).
+    caps = host.check_output("systemctl show -p CapabilityBoundingSet --value postfix@-.service").split()
+    assert sorted(caps) == sorted(
+        ["cap_net_bind_service", "cap_sys_chroot", "cap_setgid", "cap_setuid", "cap_dac_override", "cap_dac_read_search"]
+    ), caps
+
+
+def test_mail_to_root_reaches_the_postmaster(host, sovtest_vars):
+    # root -> postmaster@<first domain> -> alice in Molecule.
+    subject = "sovtest-root-%d" % int(time.time())
+    host.check_output("printf 'Subject: %s\\n\\nroot mail\\n' | /usr/sbin/sendmail root", subject)
+    alice = "alice@" + sovtest_vars["sovtest_domain"]
+    for _ in range(30):
+        if host.run("doveadm search -u %s mailbox INBOX header subject %s", alice, subject).stdout.strip():
+            break
+        time.sleep(2)
+    else:
+        raise AssertionError(host.check_output("journalctl -u postfix@- --since -2min --no-pager -o cat | tail -15"))
+
+
