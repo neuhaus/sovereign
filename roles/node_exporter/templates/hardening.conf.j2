@@ -1,0 +1,36 @@
+# {{ ansible_managed }}
+# Sandbox for the node exporter. It runs as prometheus with no capabilities
+# and writes nothing; it reads /proc, /sys, its textfile directory and asks
+# systemd over D-Bus. Nothing here hides or replaces a mount point (no
+# TemporaryFileSystem, InaccessiblePaths, ProtectHome=yes or ProtectProc):
+# the exporter measures the file systems, and would then report the free
+# space of the replacement instead of the real disk.
+[Service]
+CapabilityBoundingSet=
+AmbientCapabilities=
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=read-only
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+RemoveIPC=yes
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+# A second layer next to the firewall: systemd itself drops every packet
+# from or to other addresses than loopback and the monitoring hosts, so
+# 9100 stays closed to others even with the nftables rules flushed.
+IPAddressDeny=any
+IPAddressAllow=localhost{% for source in node_exporter_allowed_sources %} {{ source }}{% endfor %}
+

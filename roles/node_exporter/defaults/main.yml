@@ -1,6 +1,7 @@
 ---
 # Listen address of the exporter. The firewall (nftables role) only lets the
-# hosts in `monitoring_sources` reach this port.
+# hosts in `monitoring_sources` reach this port, and the sandbox drops every
+# other address itself (IPAddressAllow).
 node_exporter_listen_address: ":9100"
 
 # *.prom files here become metrics, e.g. the time of the last backup.
@@ -9,3 +10,7 @@ node_exporter_textfile_dir: /var/lib/prometheus/node-exporter
 # Units whose state is exported (node_systemd_unit_state). Services and
 # timers only: mounts, devices and scopes would add hundreds of series.
 node_exporter_systemd_units: '.+\\.(service|timer)'
+
+# Addresses (IPv4 and IPv6, with or without prefix length) that may reach the
+# exporter, besides loopback: the same list the firewall opens 9100 for.
+node_exporter_allowed_sources: "{{ monitoring_sources | default([]) }}"

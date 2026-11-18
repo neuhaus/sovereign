@@ -82,3 +82,42 @@ def test_certificate_expiry_metric(host, ansible_var):
     line = 'sovereign_certificate_expiry_timestamp_seconds{name="%s"} ' % name
     values = [entry[len(line):] for entry in metrics(host).splitlines() if entry.startswith(line)]
     assert len(values) == 1 and float(values[0]) == float(expiry), values
+
+
+# --- Sandbox -----------------------------------------------------------------
+
+
+def test_node_exporter_sandboxed(host, sovtest_vars):
+    props = dict(
+        line.split("=", 1)
+        for line in host.check_output(
+            "systemctl show -p NoNewPrivileges,ProtectSystem,CapabilityBoundingSet,IPAddressDeny,IPAddressAllow,ActiveState"
+            " prometheus-node-exporter"
+        ).splitlines()
+    )
+    assert props["NoNewPrivileges"] == "yes" and props["ProtectSystem"] == "strict", props
+    assert props["CapabilityBoundingSet"] == "" and props["ActiveState"] == "active", props
+    assert set(props["IPAddressDeny"].split()) == {"0.0.0.0/0", "::/0"}, props
+    allowed = props["IPAddressAllow"].split()
+    assert {"127.0.0.0/8", "::1/128"} <= set(allowed), allowed
+    assert any(a.startswith(sovtest_vars["sovtest_ips"]["dns"] + "/") for a in allowed), allowed
+
+
+def test_node_exporter_reports_the_real_disk(host):
+    # The sandbox must not replace a mount point: the exporter would then
+    # report the replacement's free space and the disk alerts would be wrong.
+    m = re.search(r'^node_filesystem_size_bytes\{[^}]*mountpoint="/"[^}]*\} (\S+)$', metrics(host), re.M)
+    assert m, "no size for /"
+    real = int(host.check_output("df -B1 --output=size / | tail -1").strip())
+    assert abs(float(m.group(1)) - real) <= real * 0.01, (m.group(1), real)
+
+
+def test_node_exporter_drops_other_addresses_itself(host, sovtest_vars):
+    # From the instance's own address to itself the firewall lets everything
+    # through (lo); only the sandbox's IP filter can refuse it.
+    if host.run("systemd-detect-virt --container --quiet").rc == 0:
+        pytest.skip("cgroup IP filtering needs a VM")
+    mail = sovtest_vars["sovtest_ips"]["mail"]
+    assert host.run("curl --silent --fail --max-time 5 http://127.0.0.1:9100/metrics -o /dev/null").rc == 0
+    blocked = host.run("curl --silent --max-time 5 --interface %s http://%s:9100/metrics -o /dev/null", mail, mail)
+    assert blocked.rc != 0, "the exporter answered a non-monitoring address"
