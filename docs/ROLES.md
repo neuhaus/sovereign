@@ -82,6 +82,8 @@ The deploy hook reloads the services that use the certificate. It fails if a rel
 
 One certificate covers all names and all domains. That is simple and needs no per-domain configuration in Postfix and Dovecot, but its public name list shows which domains share a server. It uses HTTP-01 through nginx, so the names must resolve before the first run.
 
+**The TLSA check** (`sovereign-dane-check`) runs daily and from the deploy hook after each new certificate. For every MX of the mail domains that the certificate covers, it looks up `_25._tcp.<mx>` TLSA through Unbound and compares the records with the certificate (usage 3) and its chain (usage 2). A validated record set that doesn't match means senders using DANE defer every mail to this server, while the server itself sees nothing; so the first mismatch mails `root` (the postmaster) with the hash to publish, once until it is fixed, and sets `sovereign_dane_tlsa_state{state="mismatch"}`. Records without DNSSEC (`insecure`), none at all (`absent`) and DNS errors are only exported. If the certificate comes before Postfix on a first run, the mail waits for the next run.
+
 ## maildb
 
 SQLite, with no database server: one file to back up, and no credentials to manage. It mirrors the inventory exactly and reverts manual changes, with one exception: passwords.

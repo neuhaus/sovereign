@@ -180,3 +180,22 @@ tests:
             exp_annotations:
               summary: "mail: a kernel or microcode update waits for a reboot"
               description: "Security fixes in the kernel take effect only after a reboot; see docs/ADMINISTRATION.md."
+
+  # A TLSA record that no longer matches alerts at once, only for that MX.
+  - interval: 1m
+    input_series:
+      - series: 'sovereign_dane_tlsa_state{instance="mail",mx="mail.example.org",state="mismatch"}'
+        values: '0 1x5'
+      - series: 'sovereign_dane_tlsa_state{instance="mail",mx="mail.example.org",state="ok"}'
+        values: '1 0x5'
+    alert_rule_test:
+      - eval_time: 0m
+        alertname: SovereignDaneMismatch
+        exp_alerts: []
+      - eval_time: 1m
+        alertname: SovereignDaneMismatch
+        exp_alerts:
+          - exp_labels: {instance: mail, mx: mail.example.org, state: mismatch, severity: critical}
+            exp_annotations:
+              summary: "mail: the TLSA record of mail.example.org doesn't match the certificate"
+              description: "Servers using DANE defer all mail to it. Publish the current hash; see the README."

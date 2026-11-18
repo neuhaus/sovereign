@@ -18,4 +18,5 @@ systemd_timers_all_jobs: >-
   {{ systemd_timers_jobs
      + (restic_timer_jobs | default([]))
      + (unattended_upgrades_timer_jobs | default([]))
-     + (postfix_timer_jobs | default([])) }}
+     + (postfix_timer_jobs | default([]))
+     + (certbot_timer_jobs | default([])) }}

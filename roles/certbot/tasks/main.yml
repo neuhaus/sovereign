@@ -14,6 +14,20 @@
     update_cache: true
     cache_valid_time: 3600
 
+# The DANE check: dnspython for the lookups (cryptography comes with certbot).
+- name: Install the DANE check's dependencies
+  ansible.builtin.apt:
+    name: [python3-dnspython, python3-cryptography]
+    state: present
+
+- name: Install the DANE check
+  ansible.builtin.template:
+    src: sovereign-dane-check.j2
+    dest: /usr/local/sbin/sovereign-dane-check
+    owner: root
+    group: root
+    mode: "0755"
+
 - name: Create the deploy hook directory
   ansible.builtin.file:
     path: /etc/letsencrypt/renewal-hooks/deploy

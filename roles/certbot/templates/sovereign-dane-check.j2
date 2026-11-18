@@ -1,0 +1,170 @@
+#!/usr/bin/python3
+# {{ ansible_managed }}
+"""Check that the published DANE TLSA records match the certificate.
+
+Senders using DANE (RFC 7672) deliver only if a TLSA record of the MX matches
+its certificate; otherwise they defer every mail and bounce it days later,
+while this server sees nothing. For each MX of the mail domains that the
+certificate covers, look up _25._tcp.<mx> TLSA through the local validating
+resolver (Unbound) and compare it with the current certificate and chain.
+
+States per MX: ok, mismatch (validated TLSA records, none matches: DANE
+senders can't deliver), insecure (TLSA records without DNSSEC, which senders
+ignore), absent (no TLSA records: no DANE), error (DNS failure). The first
+time an MX is in mismatch, root (the postmaster) gets a mail; if sending
+fails, the check fails and tries again on the next run. The states go to
+node_exporter.
+
+For the tests: SOVEREIGN_DANE_HOSTS (space-separated) replaces the MX hosts.
+"""
+
+import hashlib
+import json
+import os
+import socket
+import subprocess
+import sys
+import time
+
+import dns.exception
+import dns.flags
+import dns.rdatatype
+import dns.resolver
+from cryptography import x509
+from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
+
+LIVE = "/etc/letsencrypt/live/{{ certbot_domains[0] }}"
+DOMAINS = {{ certbot_dane_mail_domains | to_json }}
+METRICS = "{{ certbot_metrics_dir }}/sovereign_dane.prom"
+STATE = "{{ certbot_dane_state }}"
+STATES = ("ok", "mismatch", "insecure", "absent", "error")
+
+
+def resolver():
+    r = dns.resolver.Resolver(configure=False)
+    r.nameservers = ["127.0.0.1"]
+    r.use_edns(0, dns.flags.DO, 1232)
+    r.lifetime = 10
+    return r
+
+
+def load_certs(path):
+    with open(path, "rb") as f:
+        return x509.load_pem_x509_certificates(f.read())
+
+
+def candidates():
+    """(usage, selector, matching type, data) that a record may match."""
+    def forms(cert):
+        full = cert.public_bytes(Encoding.DER)
+        spki = cert.public_key().public_bytes(Encoding.DER, PublicFormat.SubjectPublicKeyInfo)
+        for selector, data in ((0, full), (1, spki)):
+            yield selector, 0, data
+            yield selector, 1, hashlib.sha256(data).digest()
+            yield selector, 2, hashlib.sha512(data).digest()
+
+    leaf = load_certs(LIVE + "/cert.pem")[0]
+    found = {(3,) + form for form in forms(leaf)}
+    for ca in load_certs(LIVE + "/chain.pem"):
+        found |= {(2,) + form for form in forms(ca)}
+    return found, {name.value.lower() for name in leaf.extensions.get_extension_for_class(
+        x509.SubjectAlternativeName).value if isinstance(name, x509.DNSName)}
+
+
+def mx_hosts(r, names):
+    hosts = set()
+    for domain in DOMAINS:
+        try:
+            for mx in r.resolve(domain, "MX"):
+                host = str(mx.exchange).rstrip(".").lower()
+                if host in names:
+                    hosts.add(host)
+        except dns.exception.DNSException as exc:
+            print("%s: MX lookup failed: %s" % (domain, exc), file=sys.stderr)
+    return sorted(hosts)
+
+
+def check(r, host, accepted):
+    try:
+        answer = r.resolve("_25._tcp." + host, "TLSA")
+    except (dns.resolver.NXDOMAIN, dns.resolver.NoAnswer):
+        return "absent"
+    except dns.exception.DNSException as exc:
+        print("%s: TLSA lookup failed: %s" % (host, exc), file=sys.stderr)
+        return "error"
+    if not answer.response.flags & dns.flags.AD:
+        return "insecure"
+    records = {(rr.usage, rr.selector, rr.mtype, rr.cert) for rr in answer}
+    # Usage 0 and 1 (PKIX) don't count for SMTP (RFC 7672).
+    usable = {rr for rr in records if rr[0] in (2, 3)}
+    return "ok" if usable & accepted else "mismatch"
+
+
+def notify(host, key_hash):
+    fqdn = socket.getfqdn()
+    body = (
+        "To: root\n"
+        "Subject: DANE: the TLSA record of %s doesn't match the certificate\n\n"
+        "The DNSSEC-signed TLSA records at _25._tcp.%s don't match the\n"
+        "certificate of %s. Mail servers that use DANE can't deliver to it:\n"
+        "they defer every message and bounce it after a few days.\n\n"
+        "Publish the current hash (see the README, \"TLSA\"):\n\n"
+        "  _25._tcp.%s. IN TLSA 3 1 1 %s\n\n"
+        "This mail is sent once; the check runs daily.\n"
+        % (host, host, fqdn, host, key_hash)
+    )
+    # On a first run, the certificate comes before Postfix: no mail yet, so
+    # the next run tries again.
+    if not os.path.exists("/usr/sbin/sendmail"):
+        print("%s: no sendmail yet, not notified" % host, file=sys.stderr)
+        return False
+    subprocess.run(["/usr/sbin/sendmail", "-t"], input=body.encode(), check=True)
+    return True
+
+
+def main():
+    accepted, names = candidates()
+    r = resolver()
+    override = os.environ.get("SOVEREIGN_DANE_HOSTS")
+    hosts = sorted(override.split()) if override is not None else mx_hosts(r, names)
+    leaf_hash = next(d for u, s, m, d in accepted if (u, s, m) == (3, 1, 1)).hex()
+
+    try:
+        with open(STATE) as f:
+            notified = set(json.load(f))
+    except (OSError, ValueError):
+        notified = set()
+
+    states = {}
+    for host in hosts:
+        states[host] = check(r, host, accepted)
+        print("%s: %s" % (host, states[host]))
+        if states[host] == "mismatch" and host not in notified and notify(host, leaf_hash):
+            notified.add(host)
+    # Forget hosts that are fine again, so a new mismatch mails again.
+    notified = {host for host in notified if states.get(host, "mismatch") == "mismatch"}
+
+    os.makedirs(os.path.dirname(STATE), exist_ok=True)
+    with open(STATE + ".new", "w") as f:
+        json.dump(sorted(notified), f)
+    os.replace(STATE + ".new", STATE)
+
+    lines = [
+        "# HELP sovereign_dane_tlsa_state State of the TLSA records of each MX (1 for the current state).",
+        "# TYPE sovereign_dane_tlsa_state gauge",
+    ]
+    for host, state in states.items():
+        lines += ['sovereign_dane_tlsa_state{mx="%s",state="%s"} %d' % (host, s, s == state) for s in STATES]
+    lines += [
+        "# HELP sovereign_dane_check_last_run_timestamp_seconds When the TLSA records were last checked.",
+        "# TYPE sovereign_dane_check_last_run_timestamp_seconds gauge",
+        "sovereign_dane_check_last_run_timestamp_seconds %d" % time.time(),
+    ]
+    with open(METRICS + ".new", "w") as f:
+        f.write("\n".join(lines) + "\n")
+    os.chmod(METRICS + ".new", 0o644)
+    os.replace(METRICS + ".new", METRICS)
+
+
+if __name__ == "__main__":
+    main()

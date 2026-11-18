@@ -36,3 +36,7 @@ printf '%s\n' \
     "sovereign_certificate_expiry_timestamp_seconds{name=\"{{ certbot_domains[0] }}\"} $expiry" > "$file.new"
 chmod 0644 "$file.new"
 mv "$file.new" "$file"
+
+# Do the published TLSA records still match? Mails the postmaster if not. A
+# DNS problem here must not fail the renewal; the daily run repeats it.
+/usr/local/sbin/sovereign-dane-check || echo "certbot deploy hook: the DANE check failed" >&2

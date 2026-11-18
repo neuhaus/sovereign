@@ -156,6 +156,23 @@ groups:
           summary: "{{ $labels.instance }}: backup repository check failed or overdue"
           description: "journalctl -u sovereign-backup-check; restic check runs weekly."
 
+      # --- DANE -----------------------------------------------------------
+      - alert: SovereignDaneMismatch
+        expr: sovereign_dane_tlsa_state{state="mismatch"} == 1
+        labels:
+          severity: critical
+        annotations:
+          summary: "{{ $labels.instance }}: the TLSA record of {{ $labels.mx }} doesn't match the certificate"
+          description: "Servers using DANE defer all mail to it. Publish the current hash; see the README."
+
+      - alert: SovereignDaneCheckNotRun
+        expr: time() - sovereign_dane_check_last_run_timestamp_seconds > 2 * 86400
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.instance }}: TLSA records not checked for over 2 days"
+          description: "journalctl -u sovereign-dane-check; the check runs daily."
+
       # --- Security support -----------------------------------------------
       - alert: SovereignPackagesWithoutSecuritySupport
         expr: sovereign_security_support_affected_packages > 0

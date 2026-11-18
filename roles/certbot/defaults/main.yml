@@ -22,3 +22,19 @@ certbot_reload_services:
 # The deploy hook records the certificate's expiry here for node_exporter
 # (sovereign_certificate_expiry_timestamp_seconds).
 certbot_metrics_dir: "{{ node_exporter_textfile_dir | default('/var/lib/prometheus/node-exporter') }}"
+
+# Daily, and after each new certificate: do the published DANE TLSA records
+# (_25._tcp.<mx>) of the mail domains' MX hosts on this certificate still
+# match it? A mismatch mails root (the postmaster) once and sets
+# sovereign_dane_tlsa_state{state="mismatch"}: DANE senders then defer every
+# mail to this server.
+certbot_dane_mail_domains: "{{ mail_domains | default([]) }}"
+certbot_dane_state: /var/lib/sovereign/dane-mismatch.json
+
+# Picked up by the systemd_timers role.
+certbot_timer_jobs:
+  - name: dane-check
+    description: Check the published DANE TLSA records against the certificate
+    command: /usr/local/sbin/sovereign-dane-check
+    on_calendar: daily
+    randomized_delay: 1h

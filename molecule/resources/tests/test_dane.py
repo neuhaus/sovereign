@@ -120,3 +120,70 @@ def test_tls_policy_skips_mta_sts_only_with_dane_for_every_mx(host, domain, dane
     ]
     assert decisions, "no decision logged for " + domain
     assert ("MTA-STS not consulted" in decisions[-1]) == dane, decisions[-1]
+
+
+# --- Inbound: the published TLSA records of our own MX ------------------------
+
+DANE_CHECK = "SOVEREIGN_DANE_HOSTS=%s /usr/local/sbin/sovereign-dane-check"
+
+
+def set_tlsa(dns, host, zone, name, data):
+    """Replace the TLSA records of name in a signed test zone (knot re-signs)."""
+    dns.run("knotc zone-abort %s", zone)
+    dns.check_output("knotc zone-begin %s", zone)
+    dns.run("knotc zone-unset %s %s TLSA", zone, name)
+    if data:
+        dns.check_output("knotc zone-set %s %s 300 TLSA %s", zone, name, data)
+    dns.check_output("knotc zone-commit %s", zone)
+    # Unbound caches the old answer (and the earlier NXDOMAIN).
+    host.check_output("unbound-control flush_zone %s", zone)
+
+
+def dane_state(host, mx):
+    def state():
+        out = host.check_output(DANE_CHECK, mx)
+        return out.split(": ", 1)[1] if out.startswith(mx + ": ") else out
+
+    return state
+
+
+def test_own_tlsa_record_is_checked(host, dns, sovtest_vars):
+    # signed.test stands in for our zone: a TLSA record with the real hash of
+    # our key is ok, a wrong one is a mismatch that mails the postmaster once,
+    # none at all is absent. broken.test fails validation: error.
+    mx, zone, name = "mail.signed.test", "signed.test", "_25._tcp.mail"
+    real = host.check_output(
+        "openssl x509 -in /etc/letsencrypt/live/$(ls /etc/letsencrypt/live | grep -v README | head -1)/cert.pem -noout -pubkey"
+        " | openssl pkey -pubin -outform DER | sha256sum | cut -d' ' -f1"
+    )
+    wrong = real[:-1] + ("1" if real[-1] == "0" else "0")
+    alice = "alice@" + sovtest_vars["sovtest_domain"]
+
+    def mails():
+        return host.run("doveadm search -u %s mailbox INBOX header subject %s", alice, "TLSA record of " + mx).stdout.splitlines()
+
+    before = len(mails())
+    state = dane_state(host, mx)
+    try:
+        set_tlsa(dns, host, zone, name, "3 1 1 " + real)
+        assert wait_for(lambda: state() == "ok", 30), state()
+        set_tlsa(dns, host, zone, name, "3 1 1 " + wrong)
+        assert wait_for(lambda: state() == "mismatch", 30), state()
+        assert wait_for(lambda: len(mails()) == before + 1, 60), mails()
+        assert state() == "mismatch"
+        time.sleep(5)
+        assert len(mails()) == before + 1, "mailed again"
+        set_tlsa(dns, host, zone, name, None)
+        assert wait_for(lambda: state() == "absent", 30), state()
+        assert dane_state(host, "mail.broken.test")() == "error"
+    finally:
+        set_tlsa(dns, host, zone, name, None)
+        host.run("systemctl start sovereign-dane-check.service")
+
+
+def test_dane_check_covers_our_mx(host):
+    # Without the override: the MX of the mail domains on our certificate. The
+    # test zone sovereign.test is unsigned and has no TLSA record.
+    host.check_output("systemctl start sovereign-dane-check.service")
+    metrics = host.check_output("curl --silent --fail http://127.0.0.1:9100/metrics")
+    assert 'sovereign_dane_tlsa_state{mx="mail.sovereign.test",state="absent"} 1' in metrics, metrics[-2000:]
