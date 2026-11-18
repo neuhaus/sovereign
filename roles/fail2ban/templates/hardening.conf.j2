@@ -32,7 +32,9 @@ IPAddressDeny=any
 IPAddressAllow=localhost
 # Allowlist: an empty /var with only its database and the journal.
 TemporaryFileSystem=/var:ro /srv:ro /opt:ro /mnt:ro /media:ro
-BindPaths=/var/lib/fail2ban
+# fail2ban keeps its PID file and socket under /var/run/fail2ban; /var/run is
+# a symlink to /run, which the empty /var hides.
+BindPaths=/var/lib/fail2ban /run/fail2ban:/var/run/fail2ban
 BindReadOnlyPaths=-/var/log/journal
 ReadWritePaths=/var/lib/fail2ban
 InaccessiblePaths={{ fail2ban_inaccessible_paths | map('regex_replace', '^', '-') | join(' ') }}
