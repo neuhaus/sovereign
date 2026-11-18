@@ -118,6 +118,8 @@ One DKIM key per domain, generated once and never replaced. The web interface is
 
 Debian's `master.cf` is kept, with the submission services (587 with STARTTLS, 465 with implicit TLS, same rules) added through `postconf`, because the chroot default differs between Debian 13 and Testing and keeping theirs works for both. Lookup tables use lmdb, since Postfix 3.11 deprecates hash and btree. Mail lookups go through proxymap.
 
+**postsrsd** separates itself: its main process (root) only accepts connections on its socket, and a child per connection switches to the `postsrsd` user in the chroot `/var/lib/postsrsd` before it reads any address. A drop-in adds what Debian's sandbox leaves out: no network at all (it talks only through the Unix socket), three capabilities instead of five, a system call filter, and write access only to its socket directory (`/var/spool/postfix/postsrsd`) instead of the whole spool with the mail queue in it.
+
 postsrsd 2 comes from `trixie-backports` on Debian 13, whose own 1.x has a different interface. Through the socketmap it rewrites the envelope sender of all foreign mail, also when delivered locally, so `Return-Path` shows the SRS address. That is harmless; its milter mode may be more precise.
 
 ## dovecot

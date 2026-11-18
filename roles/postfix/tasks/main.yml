@@ -43,11 +43,38 @@
     mode: "0644"
   notify: Restart postsrsd
 
+- name: Create postsrsd's socket directory
+  ansible.builtin.file:
+    path: "/var/spool/postfix/{{ postfix_srs_socket | dirname }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Create the postsrsd drop-in directory
+  ansible.builtin.file:
+    path: /etc/systemd/system/postsrsd.service.d
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Sandbox postsrsd
+  ansible.builtin.template:
+    src: postsrsd-hardening.conf.j2
+    dest: /etc/systemd/system/postsrsd.service.d/sovereign-hardening.conf
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Restart postsrsd
+
+# daemon_reload: the sandbox drop-in must be loaded before the first start.
 - name: Enable postsrsd
   ansible.builtin.systemd_service:
     name: postsrsd
     state: started
     enabled: true
+    daemon_reload: true
 
 # proxymap runs as the postfix user and reads the mail database.
 - name: Allow postfix to read the mail database

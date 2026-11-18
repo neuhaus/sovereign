@@ -91,7 +91,7 @@ milter_default_action = tempfail
 {% endif %}
 
 # --- Sender Rewriting Scheme (postsrsd socketmap) ----------------------------
-sender_canonical_maps = socketmap:unix:srs:forward
+sender_canonical_maps = socketmap:unix:{{ postfix_srs_socket }}:forward
 sender_canonical_classes = envelope_sender
-recipient_canonical_maps = socketmap:unix:srs:reverse
+recipient_canonical_maps = socketmap:unix:{{ postfix_srs_socket }}:reverse
 recipient_canonical_classes = envelope_recipient, header_recipient

@@ -32,6 +32,10 @@ postfix_maildb_group: "{{ maildb_group | default('maildb') }}"
 # this domain, which must accept mail (bounces to forwarded messages).
 postfix_srs_domain: "{{ (mail_domains | default([]))[0] | default(postfix_hostname) }}"
 postfix_local_domains: "{{ mail_domains | default([]) }}"
+# postsrsd's socket, relative to the queue directory (cleanup runs chrooted
+# there), in a directory of its own: the sandbox lets postsrsd write only
+# there, not the whole spool with the mail queue in it.
+postfix_srs_socket: postsrsd/srs
 
 # Queue sizes and the age of the oldest deferred message, every 5 minutes, as
 # metrics for node_exporter (sovereign_postfix_queue_*).
@@ -67,3 +71,15 @@ postfix_inaccessible_paths:
 # Mail to root (cron, unattended-upgrades, the system) goes here instead of
 # /var/mail/root, which nobody reads.
 postfix_root_alias: "postmaster@{{ postfix_srs_domain }}"
+
+# Hidden from postsrsd: other services' secrets (it keeps /etc/postsrsd.conf
+# and /etc/postsrsd.secret). Missing paths are skipped.
+postfix_postsrsd_inaccessible_paths:
+  - /etc/letsencrypt
+  - /etc/ssl/private
+  - /etc/dovecot
+  - /etc/restic
+  - /etc/nginx
+  - /etc/roundcube
+  - /etc/radicale
+  - /etc/rspamd

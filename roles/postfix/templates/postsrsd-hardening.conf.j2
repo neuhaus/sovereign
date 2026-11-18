@@ -1,0 +1,20 @@
+# {{ ansible_managed }}
+# Tightens Debian's sandbox for postsrsd. Its main process (root) only
+# accepts connections on the socket and starts a child per connection, which
+# switches to the postsrsd user in the chroot /var/lib/postsrsd before it
+# reads any address; hence the three capabilities left. It talks only
+# through that Unix socket: no network at all. Debian lets it write the whole
+# Postfix spool, mail queue included; here only its socket directory.
+[Service]
+CapabilityBoundingSet=
+CapabilityBoundingSet=CAP_SETUID CAP_SETGID CAP_SYS_CHROOT
+PrivateNetwork=yes
+RestrictAddressFamilies=AF_UNIX
+ReadWritePaths=
+ReadWritePaths=/var/spool/postfix/{{ postfix_srs_socket | dirname }}
+# Allowlist: an empty /var with only the socket directory and the chroot.
+TemporaryFileSystem=/var:ro /srv:ro /opt:ro /mnt:ro /media:ro
+BindPaths=/var/spool/postfix/{{ postfix_srs_socket | dirname }}
+BindReadOnlyPaths=/var/lib/postsrsd
+InaccessiblePaths={{ postfix_postsrsd_inaccessible_paths | map('regex_replace', '^', '-') | join(' ') }}
+SystemCallFilter=@system-service chroot

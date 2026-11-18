@@ -63,7 +63,7 @@ def test_pebble_issuance_root_trusted(host):
 
 # Sandboxing of the services that handle untrusted input (rspamd, PHP-FPM).
 # That they still work is covered by the mail flow, spam and webmail tests.
-@pytest.mark.parametrize("unit", ["rspamd.service", "php*-fpm.service", "postfix@-.service", "nginx.service", "dovecot.service", "radicale.service"])
+@pytest.mark.parametrize("unit", ["rspamd.service", "php*-fpm.service", "postfix@-.service", "nginx.service", "dovecot.service", "radicale.service", "postsrsd.service"])
 def test_service_sandboxed(host, unit):
     name = host.check_output("systemctl list-units --type=service --all --no-legend --plain %s | cut -d' ' -f1", unit).split()[0]
     props = dict(
@@ -107,15 +107,18 @@ OTHER_SERVICE = {
     "nginx.service": ["/var/lib/rspamd", "/var/lib/php/sessions", "/var/lib/roundcube-sovereign", "/var/lib/dbconfig-common", "/etc/roundcube"],
     "dovecot.service": ["/var/lib/rspamd", "/var/lib/php/sessions", "/var/lib/roundcube-sovereign", "/etc/roundcube", "/etc/rspamd"],
     "radicale.service": ["/var/lib/rspamd", "/var/lib/php/sessions", "/var/lib/roundcube-sovereign", "/etc/roundcube"],
+    # Not the mail queue: Debian let it write the whole spool.
+    "postsrsd.service": ["/var/spool/postfix/active", "/var/spool/postfix/deferred", "/var/spool/postfix/private", "/etc/roundcube"],
 }
 # What a service legitimately reads: Postfix the mail database and its TLS keys.
 NEEDED = {"postfix@-.service": ["/var/lib/sovereign", "/etc/letsencrypt"], "nginx.service": ["/etc/nginx", "/etc/letsencrypt"],
     "dovecot.service": ["/var/vmail", "/var/lib/sovereign", "/etc/letsencrypt", "/etc/dovecot"],
     "radicale.service": ["/var/lib/radicale"],
+    "postsrsd.service": ["/etc/postsrsd.secret"],
 }
 
 
-@pytest.mark.parametrize("unit", ["rspamd.service", "php*-fpm.service", "postfix@-.service", "nginx.service", "dovecot.service", "radicale.service"])
+@pytest.mark.parametrize("unit", ["rspamd.service", "php*-fpm.service", "postfix@-.service", "nginx.service", "dovecot.service", "radicale.service", "postsrsd.service"])
 def test_service_cannot_see_secrets(host, unit):
     # Inside the service's mount namespace each path is either gone (the
     # empty /var) or an empty node with mode 0, so even its root master sees
@@ -260,3 +263,33 @@ def test_radicale_cannot_connect_out(host, sovtest_vars):
     assert host.run(probe, cgroup, "127.0.0.1", "5232").rc == 0
     assert host.run(probe, cgroup, dns, "53").rc != 0
     assert host.run("timeout 5 bash -c 'exec 3<>/dev/tcp/%s/53'", dns).rc == 0, "dns not reachable at all"
+
+
+def test_postsrsd_sandbox(host):
+    unit = dict(line.split("=", 1) for line in host.check_output(
+        "systemctl show -p CapabilityBoundingSet,PrivateNetwork,RestrictAddressFamilies postsrsd").splitlines())
+    assert sorted(unit["CapabilityBoundingSet"].split()) == ["cap_setgid", "cap_setuid", "cap_sys_chroot"], unit
+    assert unit["PrivateNetwork"] == "yes" and unit["RestrictAddressFamilies"] == "AF_UNIX", unit
+
+
+def test_postsrsd_handles_addresses_unprivileged_in_its_chroot(host):
+    # The main process (root) only accepts connections; the child that reads
+    # the addresses runs as postsrsd in /var/lib/postsrsd. Hold a connection
+    # open and look at it.
+    script = """
+import socket, subprocess, time
+s = socket.socket(socket.AF_UNIX)
+s.connect("/var/spool/postfix/postsrsd/srs")
+q = b"forward sender@origin.example"
+s.sendall(str(len(q)).encode() + b":" + q + b",")
+assert s.recv(200).split(b":", 1)[1].startswith(b"OK SRS0="), "no SRS answer"
+time.sleep(0.5)
+main = subprocess.check_output(["systemctl", "show", "-p", "MainPID", "--value", "postsrsd"], text=True).strip()
+children = subprocess.check_output(["pgrep", "-P", main], text=True).split()
+for pid in children:
+    uid = [l.split()[1] for l in open("/proc/%s/status" % pid) if l.startswith("Uid:")][0]
+    print(pid, uid, subprocess.check_output(["readlink", "/proc/%s/root" % pid], text=True).strip())
+"""
+    out = host.check_output("python3 -c %s", script).splitlines()
+    postsrsd_uid = host.check_output("id -u postsrsd")
+    assert out and all(line.split()[1:] == [postsrsd_uid, "/var/lib/postsrsd"] for line in out), out
