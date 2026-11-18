@@ -410,9 +410,29 @@ def test_moving_to_junk_trains_spam(host, client, ctx):
     )
 
 
-def test_redis_uses_its_own_file_and_debians_stays_untouched(host):
-    # Debian's redis.conf is a conffile: edited, a Redis update that changes
-    # it would be held back by unattended upgrades.
-    pid = host.check_output("systemctl show -p MainPID --value redis-server")
-    assert "/etc/redis/sovereign.conf" in host.check_output("tr '\\0' ' ' < /proc/%s/cmdline", pid)
-    assert "/etc/redis/redis.conf" not in host.run("dpkg --verify redis-server").stdout
+@pytest.mark.parametrize(
+    "unit, package, ours",
+    [
+        ("redis-server", "redis-server", "/etc/redis/sovereign.conf"),
+        ("radicale", "radicale", "/etc/radicale/sovereign.conf"),
+        ("postfix-mta-sts-resolver", "postfix-mta-sts-resolver", "/etc/mta-sts-daemon.sovereign.yml"),
+    ],
+)
+def test_service_uses_its_own_file_and_debians_stays_untouched(host, unit, package, ours):
+    # Debian's conffiles stay as shipped: an edited one makes dpkg ask on an
+    # update that changes it. The service runs with Sovereign's file.
+    pid = host.check_output("systemctl show -p MainPID --value %s", unit)
+    assert ours in host.check_output("tr '\\0' ' ' < /proc/%s/cmdline", pid)
+    assert host.run("dpkg --verify %s", package).stdout == ""
+
+
+def test_roundcube_plugin_conffiles_untouched(host):
+    # The plugin settings are in Roundcube's main configuration.
+    assert host.run("dpkg --verify roundcube-plugins").stdout == ""
+    assert "'sovereign'" in host.check_output("grep password_driver /etc/roundcube/config.inc.php")
+
+
+def test_node_exporter_takes_its_arguments_from_our_file(host):
+    pid = host.check_output("systemctl show -p MainPID --value prometheus-node-exporter")
+    assert "--collector.textfile.directory=" in host.check_output("tr '\\0' ' ' < /proc/%s/cmdline", pid)
+    assert host.run("dpkg --verify prometheus-node-exporter").stdout == ""

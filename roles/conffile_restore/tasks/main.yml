@@ -1,0 +1,36 @@
+---
+- name: Check the conffiles of {{ conffile_restore_package }}
+  ansible.builtin.command:
+    argv: [dpkg, --verify, "{{ conffile_restore_package }}"]
+  register: conffile_restore_verify
+  changed_when: false
+  failed_when: false
+  check_mode: false
+
+- name: Restore Debian's conffiles of {{ conffile_restore_package }}
+  vars:
+    conffile_restore_changed: >-
+      {{ conffile_restore_verify.stdout_lines | map('regex_replace', '^.* ', '')
+         | select('in', conffile_restore_paths) | list }}
+  when: conffile_restore_changed | length > 0
+  block:
+    # Reinstalling restarts the package's services, which must then already
+    # use the role's drop-ins.
+    - name: Load the drop-ins before reinstalling {{ conffile_restore_package }}
+      ansible.builtin.systemd_service:
+        daemon_reload: true
+
+    - name: Remove the edited conffiles of {{ conffile_restore_package }}
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: absent
+      loop: "{{ conffile_restore_changed }}"
+
+    # --force-confmiss: dpkg puts missing conffiles back.
+    - name: Reinstall {{ conffile_restore_package }}
+      ansible.builtin.command:
+        argv: [apt-get, install, --reinstall, --yes, -o, "Dpkg::Options::=--force-confmiss", "{{ conffile_restore_package }}"]
+      environment:
+        DEBIAN_FRONTEND: noninteractive
+      changed_when: true
+      notify: "{{ conffile_restore_notify }}"

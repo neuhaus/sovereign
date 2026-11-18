@@ -1,0 +1,5 @@
+# {{ ansible_managed }}
+# Read Sovereign's arguments after Debian's /etc/default/prometheus-node-exporter
+# (a conffile, left untouched): the later file wins for ARGS.
+[Service]
+EnvironmentFile={{ node_exporter_environment_file }}

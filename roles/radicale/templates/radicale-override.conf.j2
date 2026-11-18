@@ -1,0 +1,6 @@
+# {{ ansible_managed }}
+# Start Radicale with Sovereign's configuration instead of Debian's
+# /etc/radicale/config (a conffile, left untouched).
+[Service]
+ExecStart=
+ExecStart=/usr/bin/radicale --config {{ radicale_config_file }}

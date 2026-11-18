@@ -14,3 +14,7 @@ node_exporter_systemd_units: '.+\\.(service|timer)'
 # Addresses (IPv4 and IPv6, with or without prefix length) that may reach the
 # exporter, besides loopback: the same list the firewall opens 9100 for.
 node_exporter_allowed_sources: "{{ monitoring_sources | default([]) }}"
+
+# The exporter's arguments; Debian's /etc/default/prometheus-node-exporter is
+# a conffile and stays as it is.
+node_exporter_environment_file: /etc/default/prometheus-node-exporter.sovereign

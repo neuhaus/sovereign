@@ -29,3 +29,17 @@ $config['log_driver'] = 'syslog';
 $config['syslog_id'] = 'roundcube';
 $config['use_https'] = true;
 $config['session_samesite'] = 'Lax';
+
+// Plugin settings. They live here, not in /etc/roundcube/plugins/*/config.inc.php:
+// those are Debian's conffiles (empty), loaded after this file, and stay
+// untouched.
+
+// password: changes go through the password service, which hashes the new
+// password (Argon2id, as doveadm).
+$config['password_driver'] = 'sovereign';
+$config['password_confirm_current'] = true;
+$config['password_minimum_length'] = {{ roundcube_password_minimum_length }};
+
+// managesieve: over loopback, where Dovecot does not require TLS.
+$config['managesieve_host'] = '127.0.0.1:4190';
+$config['managesieve_usetls'] = false;

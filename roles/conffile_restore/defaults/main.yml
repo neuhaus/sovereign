@@ -1,0 +1,10 @@
+---
+# Called by other roles (include_role, tasks_from: main). Earlier versions of
+# Sovereign edited some of Debian's conffiles in place; now each role keeps
+# its settings in a file of its own. An edited conffile makes dpkg ask on the
+# next package update that changes it (or, with --force-confold, keeps a
+# stale file), so it goes back to Debian's version.
+conffile_restore_package: ""
+conffile_restore_paths: []
+# Handler to notify after a restore, e.g. a restart.
+conffile_restore_notify: []

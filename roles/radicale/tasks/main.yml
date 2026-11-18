@@ -50,16 +50,20 @@
     mode: "0644"
   notify: Radicale configuration changed
 
+# Files of our own; Debian's config and rights are conffiles and stay
+# untouched. A drop-in starts Radicale with this configuration.
 - name: Configure radicale
   ansible.builtin.template:
-    src: "{{ item }}.j2"
-    dest: "/etc/radicale/{{ item }}"
+    src: "{{ item.src }}"
+    dest: "{{ item.dest }}"
     owner: root
     group: root
     mode: "0644"
   loop:
-    - config
-    - rights
+    - {src: config.j2, dest: "{{ radicale_config_file }}"}
+    - {src: rights.j2, dest: "{{ radicale_rights_file }}"}
+  loop_control:
+    label: "{{ item.dest }}"
   notify: Radicale configuration changed
 
 - name: Create the shared collection directories
@@ -117,6 +121,24 @@
     group: root
     mode: "0644"
   notify: Radicale configuration changed
+
+- name: Start radicale with Sovereign's configuration
+  ansible.builtin.template:
+    src: radicale-override.conf.j2
+    dest: /etc/systemd/system/radicale.service.d/sovereign.conf
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Radicale configuration changed
+
+# Earlier versions of this role edited them in place.
+- name: Restore Debian's radicale configuration
+  ansible.builtin.include_role:
+    name: conffile_restore
+  vars:
+    conffile_restore_package: radicale
+    conffile_restore_paths: [/etc/radicale/config, /etc/radicale/rights]
+    conffile_restore_notify: [Radicale configuration changed]
 
 # daemon_reload: the sandbox drop-in must be loaded before the first start.
 - name: Enable radicale

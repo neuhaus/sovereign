@@ -85,10 +85,19 @@
     validate: php -l %s
   loop:
     - {src: config.inc.php.j2, dest: config.inc.php}
-    - {src: password.inc.php.j2, dest: plugins/password/config.inc.php}
-    - {src: managesieve.inc.php.j2, dest: plugins/managesieve/config.inc.php}
   loop_control:
     label: "{{ item.dest }}"
+
+# Earlier versions of this role wrote the plugin settings into Debian's
+# plugin conffiles; they are in config.inc.php now.
+- name: Restore Debian's plugin configurations
+  ansible.builtin.include_role:
+    name: conffile_restore
+  vars:
+    conffile_restore_package: roundcube-plugins
+    conffile_restore_paths:
+      - /etc/roundcube/plugins/password/config.inc.php
+      - /etc/roundcube/plugins/managesieve/config.inc.php
 
 # Password changes go through the password service (see the template).
 - name: Install the password driver

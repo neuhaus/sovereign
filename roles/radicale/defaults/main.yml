@@ -43,3 +43,8 @@ radicale_inaccessible_paths:
 
 # Local users that may connect to Radicale's port besides root: nginx.
 radicale_proxy_users: [www-data]
+
+# Sovereign's configuration; Debian's /etc/radicale/config and rights are
+# conffiles and stay as they are.
+radicale_config_file: /etc/radicale/sovereign.conf
+radicale_rights_file: /etc/radicale/sovereign-rights

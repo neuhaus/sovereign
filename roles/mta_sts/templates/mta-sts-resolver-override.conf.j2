@@ -1,0 +1,6 @@
+# {{ ansible_managed }}
+# Start the resolver with Sovereign's configuration instead of Debian's
+# /etc/mta-sts-daemon.yml (a conffile, left untouched).
+[Service]
+ExecStart=
+ExecStart=/usr/bin/mta-sts-daemon --config {{ mta_sts_resolver_config }}

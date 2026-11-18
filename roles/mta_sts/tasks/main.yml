@@ -64,14 +64,42 @@
     update_cache: true
     cache_valid_time: 3600
 
+# A file of our own; Debian's /etc/mta-sts-daemon.yml is a conffile and
+# stays untouched. A drop-in starts the resolver with this one.
 - name: Configure postfix-mta-sts-resolver
   ansible.builtin.template:
     src: mta-sts-daemon.yml.j2
-    dest: /etc/mta-sts-daemon.yml
+    dest: "{{ mta_sts_resolver_config }}"
     owner: root
     group: root
     mode: "0644"
   notify: Restart postfix-mta-sts-resolver
+
+- name: Create the postfix-mta-sts-resolver drop-in directory
+  ansible.builtin.file:
+    path: /etc/systemd/system/postfix-mta-sts-resolver.service.d
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Start postfix-mta-sts-resolver with Sovereign's configuration
+  ansible.builtin.template:
+    src: mta-sts-resolver-override.conf.j2
+    dest: /etc/systemd/system/postfix-mta-sts-resolver.service.d/sovereign.conf
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Restart postfix-mta-sts-resolver
+
+# Earlier versions of this role edited it in place.
+- name: Restore Debian's mta-sts-daemon.yml
+  ansible.builtin.include_role:
+    name: conffile_restore
+  vars:
+    conffile_restore_package: postfix-mta-sts-resolver
+    conffile_restore_paths: [/etc/mta-sts-daemon.yml]
+    conffile_restore_notify: [Restart postfix-mta-sts-resolver]
 
 - name: Install sovereign-tls-policy
   ansible.builtin.copy:

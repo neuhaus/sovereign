@@ -13,3 +13,7 @@ mta_sts_webroot: /var/www/mta-sts
 # which lets DANE take precedence (RFC 8461 section 2).
 mta_sts_resolver_port: 8461
 mta_sts_policy_port: 8462
+
+# Configuration of postfix-mta-sts-resolver; Debian's /etc/mta-sts-daemon.yml
+# is a conffile and stays as it is.
+mta_sts_resolver_config: /etc/mta-sts-daemon.sovereign.yml

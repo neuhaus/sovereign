@@ -2,7 +2,7 @@
 # Handlers run in the order they are defined: check first, then restart.
 - name: Check radicale configuration
   ansible.builtin.command:
-    argv: [runuser, -u, "{{ radicale_user }}", --, radicale, --verify-storage]
+    argv: [runuser, -u, "{{ radicale_user }}", --, radicale, --config, "{{ radicale_config_file }}", --verify-storage]
   changed_when: false
   listen: Radicale configuration changed
 
