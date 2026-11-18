@@ -1,0 +1,38 @@
+# {{ ansible_managed }}
+# fail2ban runs regular expressions over log lines that hold text attackers
+# choose (user names, client strings). It needs only to read the journal,
+# write its database and socket, and change its nftables table: one
+# capability. No outgoing connections but loopback (DNS lookups go to
+# Unbound). NoNewPrivileges also stops mail actions through Postfix's setgid
+# postdrop; Sovereign uses none.
+[Service]
+CapabilityBoundingSet=CAP_NET_ADMIN
+NoNewPrivileges=yes
+RestrictSUIDSGID=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+ProtectProc=invisible
+ProcSubset=pid
+LockPersonality=yes
+RestrictRealtime=yes
+RestrictNamespaces=yes
+MemoryDenyWriteExecute=yes
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+RestrictAddressFamilies=AF_UNIX AF_NETLINK AF_INET AF_INET6
+IPAddressDeny=any
+IPAddressAllow=localhost
+# Allowlist: an empty /var with only its database and the journal.
+TemporaryFileSystem=/var:ro /srv:ro /opt:ro /mnt:ro /media:ro
+BindPaths=/var/lib/fail2ban
+BindReadOnlyPaths=-/var/log/journal
+ReadWritePaths=/var/lib/fail2ban
+InaccessiblePaths={{ fail2ban_inaccessible_paths | map('regex_replace', '^', '-') | join(' ') }}

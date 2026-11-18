@@ -63,8 +63,29 @@
     mode: "0644"
   notify: Fail2ban configuration changed
 
+- name: Create the fail2ban drop-in directory
+  ansible.builtin.file:
+    path: /etc/systemd/system/fail2ban.service.d
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+# A reload keeps the old sandbox; this restarts. Bans come back from the
+# database.
+- name: Sandbox fail2ban
+  ansible.builtin.template:
+    src: hardening.conf.j2
+    dest: /etc/systemd/system/fail2ban.service.d/sovereign-hardening.conf
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Fail2ban sandbox changed
+
+# daemon_reload: the sandbox drop-in must be loaded before the first start.
 - name: Enable fail2ban
   ansible.builtin.systemd_service:
     name: fail2ban
     state: started
     enabled: true
+    daemon_reload: true

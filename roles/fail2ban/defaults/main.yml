@@ -42,3 +42,16 @@ fail2ban_jails:
     maxretry: 3
   radicale:
     port: http,https
+
+# Hidden from fail2ban (systemd InaccessiblePaths): other services' secrets.
+# Under /var it sees only its database and the journal anyway (an allowlist).
+# Missing paths are skipped.
+fail2ban_inaccessible_paths:
+  - /etc/letsencrypt
+  - /etc/ssl/private
+  - /etc/dovecot
+  - /etc/restic
+  - /etc/postsrsd.secret
+  - /etc/roundcube
+  - /etc/radicale
+  - /etc/rspamd

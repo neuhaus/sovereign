@@ -62,6 +62,8 @@ Web logins reach Dovecot from loopback, where the dovecot jail cannot ban anyone
 
 **One failure is enough** where clients use stored passwords or keys: IMAP and ManageSieve, SMTP AUTH (`postfix-sasl`), CalDAV/CardDAV and SSH. The webmail and its basic auth, where people type passwords, allow three; other SMTP rejections, which other mail servers cause too (a mistyped address), five. The first ban lasts 10 minutes, every further ban of the same address in any jail doubles it, up to a day (`fail2ban_bantime`, `fail2ban_bantime_max`). The price: after a password change, every device still using the old one gets its network banned, for longer with every retry, and one device behind a shared address (an office, mobile carrier NAT) locks out everyone behind it. The cap of a day bounds that.
 
+**Sandboxed**, because it runs regular expressions over text attackers choose (user names, client strings): of root's capabilities it keeps only `CAP_NET_ADMIN` for its nftables table, under `/var` it sees only its database and the journal, other services' secrets are hidden, and it can't connect anywhere but loopback (DNS through Unbound). What stays: that capability can't be limited to fail2ban's own table, so a taken-over fail2ban could change the whole firewall; most internal services only listen on loopback anyway. `NoNewPrivileges` also rules out mail actions (`action_mw` and the like), which go through Postfix's setgid `postdrop`; Sovereign uses none.
+
 ## nginx
 
 Only the shared parts: port 80 for ACME challenges and redirects, and a TLS snippet with the same policy as Postfix and Dovecot. Roles that need a site add it themselves and notify this role's handler.
