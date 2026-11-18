@@ -62,6 +62,8 @@ Only the shared parts: port 80 for ACME challenges and redirects, and a TLS snip
 
 Runs in a systemd sandbox (`nginx.service.d/sovereign-hardening.conf`): the master keeps only the capabilities for ports 80 and 443, starting and signalling its workers, its temp directories and reopening the logs; no new privileges, no writable executable memory, a system call filter. Under `/var` it sees only the webroots (read-only), its logs and temp files, so mail, the mail database, calendars and Roundcube's sessions don't exist for it; in `/etc` other services' secrets are hidden (`nginx_inaccessible_paths`). It keeps `/etc/letsencrypt`: the workers are forked from the master and can't get a narrower view, so the TLS keys stay readable to them. A reload keeps the old mount namespace, so sandbox changes, and the Roundcube install that adds `/var/lib/roundcube`, restart nginx.
 
+Every HTTPS site serves `/.well-known/security.txt` (contact `nginx_security_contact`, by default `postmaster@` the first mail domain) and a `robots.txt` that disallows everything, and sends `X-Robots-Tag: noindex`: nothing on this server belongs in a search engine. `security.txt` must carry an expiry date; it is set a year ahead whenever the playbook runs, so a server left alone for a year serves an expired one.
+
 A catch for sites with basic auth: `return` runs before the access phase, so `return 404` answers without asking for credentials. Such sites use `try_files` instead.
 
 ## certbot
@@ -112,6 +114,8 @@ The Debian packages as they are (3.12 and 4.1), since no backport exists and one
 
 There is no ClamAV, because it needs 1 to 1.5 GB of RAM on a server with about 2. An attachment policy rejects executables and scripts, also inside archives and with double extensions, which stops most mail-borne malware at no memory cost. A ClamAV on another host can be configured.
 
+Redis (Bayes data, rate limits) listens only on a Unix socket (`rspamd_redis_socket`, mode 0770, group `redis`, which `_rspamd` joins), no TCP port: other local users can't reach it.
+
 One DKIM key per domain, generated once and never replaced. The web interface is reachable from localhost only, and Debian's default controller password is replaced.
 
 ## postfix
@@ -133,6 +137,8 @@ The metrics port (9900) listens only on loopback without `monitoring_sources`, a
 **App passwords** start with an 8-character id that selects the row, because 2.4 fails a passdb lookup returning several rows. They are refused from loopback, which in practice means from Roundcube: its session password counts as the current password when changing the main password, and an app password must not be enough for that.
 
 **mail_crypt** with one global key pair encrypts message files only. The index cache and the search index hold headers and terms in plaintext, which disk encryption has to cover. A per-user key would protect more only with a design where the server does not always have the key, which conflicts with delivery and search.
+
+**At most 4 auth workers** (`dovecot_auth_worker_limit`) check passwords. Each Argon2id check takes 64 MiB for about 55 ms, so Dovecot's default of one worker per waiting login let a burst of logins start 20 and more, over 1 GB on a 2 GB server. With 4, the peak stays near 250 MB; further logins wait in line; the CPU is the limit anyway (about 36 checks per second on the two-core test VM).
 
 **A generic authentication socket** (`auth-external`, group `dovecot-auth`) lets local services check logins by joining the group. Dovecot does not need to know about them, and no role order depends on it.
 

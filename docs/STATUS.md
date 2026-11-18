@@ -7,7 +7,12 @@ The plan itself, with the decisions worked in, is [PLAN.md](PLAN.md).
 Last update: Phases 0-5 complete, including password reset, multiple mail domains
 and append-only backups, plus the `openssh` role (key logins only), the
 `timesyncd` role (`ntp_servers`) and `docs/ROLES.md`. Since then, Phase 5.5
-(operational readiness, from the review in [KRITIK.md](KRITIK.md)) steps 1-3.
+(operational readiness, from the review in [KRITIK.md](KRITIK.md)) steps 1-3,
+and from step 3 the read restrictions: systemd sandboxes for every exposed
+service (see [ROLES.md](ROLES.md)), Redis on a Unix socket, loopback ports only
+for the users that need them, and security headers, `security.txt` and
+`robots.txt` for the web sites. The sandboxes since nginx are not yet in a
+full run.
 
 Results of Phase 5.5 (2026-11-12), Debian 13 only so far:
 
