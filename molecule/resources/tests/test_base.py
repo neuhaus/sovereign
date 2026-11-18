@@ -154,6 +154,12 @@ def test_unattended_upgrades_enabled(host):
     assert 'APT::Periodic::Unattended-Upgrade "1";' in config
 
 
+def test_changed_conffiles_dont_hold_back_upgrades(host):
+    # Otherwise unattended upgrades skip a package whose conffile differs.
+    config = host.check_output("apt-config dump DPkg::Options")
+    assert 'DPkg::Options:: "--force-confold";' in config, config
+
+
 def test_failed_upgrades_are_mailed(host):
     config = host.check_output("apt-config dump Unattended-Upgrade")
     assert 'Unattended-Upgrade::Mail "root";' in config

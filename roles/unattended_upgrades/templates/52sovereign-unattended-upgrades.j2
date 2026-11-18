@@ -5,6 +5,13 @@ Unattended-Upgrade::Remove-Unused-Kernel-Packages "{{ unattended_upgrades_remove
 Unattended-Upgrade::Remove-Unused-Dependencies "{{ unattended_upgrades_remove_unused | bool | lower }}";
 Unattended-Upgrade::Automatic-Reboot "{{ unattended_upgrades_automatic_reboot | bool | lower }}";
 Unattended-Upgrade::Automatic-Reboot-Time "{{ unattended_upgrades_automatic_reboot_time }}";
+// A changed conffile would make dpkg ask whether to keep it, and unattended
+// upgrades hold such packages back instead, security updates included. Keep
+// the installed file and install the update. Sovereign's roles leave Debian's
+// conffiles alone where they can; dpkg --verify shows the ones that differ.
+// This applies to manual apt runs too: keep the old file without asking.
+DPkg::Options:: "--force-confdef";
+DPkg::Options:: "--force-confold";
 // A failed upgrade is mailed (root reaches the postmaster); successful ones
 // only go to the journal.
 Unattended-Upgrade::Mail "{{ unattended_upgrades_mail }}";
