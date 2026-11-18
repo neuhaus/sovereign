@@ -63,7 +63,7 @@ def test_pebble_issuance_root_trusted(host):
 
 # Sandboxing of the services that handle untrusted input (rspamd, PHP-FPM).
 # That they still work is covered by the mail flow, spam and webmail tests.
-@pytest.mark.parametrize("unit", ["rspamd.service", "php*-fpm.service", "postfix@-.service", "nginx.service", "dovecot.service", "radicale.service", "postsrsd.service"])
+@pytest.mark.parametrize("unit", ["rspamd.service", "php*-fpm.service", "postfix.service", "nginx.service", "dovecot.service", "radicale.service", "postsrsd.service"])
 def test_service_sandboxed(host, unit):
     name = host.check_output("systemctl list-units --type=service --all --no-legend --plain %s | cut -d' ' -f1", unit).split()[0]
     props = dict(
@@ -103,7 +103,7 @@ SECRETS = [
 OTHER_SERVICE = {
     "rspamd.service": ["/var/lib/php/sessions", "/var/lib/roundcube-sovereign", "/etc/roundcube"],
     "php*-fpm.service": ["/var/lib/rspamd", "/etc/rspamd"],
-    "postfix@-.service": ["/var/lib/rspamd", "/var/lib/php/sessions", "/etc/roundcube", "/var/lib/sovereign/mobileconfig"],
+    "postfix.service": ["/var/lib/rspamd", "/var/lib/php/sessions", "/etc/roundcube", "/var/lib/sovereign/mobileconfig"],
     "nginx.service": ["/var/lib/rspamd", "/var/lib/php/sessions", "/var/lib/roundcube-sovereign", "/var/lib/dbconfig-common", "/etc/roundcube"],
     "dovecot.service": ["/var/lib/rspamd", "/var/lib/php/sessions", "/var/lib/roundcube-sovereign", "/etc/roundcube", "/etc/rspamd"],
     "radicale.service": ["/var/lib/rspamd", "/var/lib/php/sessions", "/var/lib/roundcube-sovereign", "/etc/roundcube"],
@@ -111,14 +111,14 @@ OTHER_SERVICE = {
     "postsrsd.service": ["/var/spool/postfix/active", "/var/spool/postfix/deferred", "/var/spool/postfix/private", "/etc/roundcube"],
 }
 # What a service legitimately reads: Postfix the mail database and its TLS keys.
-NEEDED = {"postfix@-.service": ["/var/lib/sovereign", "/etc/letsencrypt"], "nginx.service": ["/etc/nginx", "/etc/letsencrypt"],
+NEEDED = {"postfix.service": ["/var/lib/sovereign", "/etc/letsencrypt"], "nginx.service": ["/etc/nginx", "/etc/letsencrypt"],
     "dovecot.service": ["/var/vmail", "/var/lib/sovereign", "/etc/letsencrypt", "/etc/dovecot"],
     "radicale.service": ["/var/lib/radicale"],
     "postsrsd.service": ["/etc/postsrsd.secret"],
 }
 
 
-@pytest.mark.parametrize("unit", ["rspamd.service", "php*-fpm.service", "postfix@-.service", "nginx.service", "dovecot.service", "radicale.service", "postsrsd.service"])
+@pytest.mark.parametrize("unit", ["rspamd.service", "php*-fpm.service", "postfix.service", "nginx.service", "dovecot.service", "radicale.service", "postsrsd.service"])
 def test_service_cannot_see_secrets(host, unit):
     # Inside the service's mount namespace each path is either gone (the
     # empty /var) or an empty node with mode 0, so even its root master sees
@@ -140,7 +140,7 @@ def test_service_cannot_see_secrets(host, unit):
 
 def test_postfix_capabilities(host):
     # Debian's set without CAP_CHOWN (no procmail, no /var/mail delivery).
-    caps = host.check_output("systemctl show -p CapabilityBoundingSet --value postfix@-.service").split()
+    caps = host.check_output("systemctl show -p CapabilityBoundingSet --value postfix.service").split()
     assert sorted(caps) == sorted(
         ["cap_net_bind_service", "cap_sys_chroot", "cap_setgid", "cap_setuid", "cap_dac_override", "cap_dac_read_search"]
     ), caps
@@ -156,7 +156,7 @@ def test_mail_to_root_reaches_the_postmaster(host, sovtest_vars):
             break
         time.sleep(2)
     else:
-        raise AssertionError(host.check_output("journalctl -u postfix@- --since -2min --no-pager -o cat | tail -15"))
+        raise AssertionError(host.check_output("journalctl -u postfix --since -2min --no-pager -o cat | tail -15"))
 
 
 def test_auth_workers_are_limited(host, peer, sovtest_vars):

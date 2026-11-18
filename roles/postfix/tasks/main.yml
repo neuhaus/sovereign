@@ -193,7 +193,7 @@
 
 - name: Create the postfix drop-in directory
   ansible.builtin.file:
-    path: /etc/systemd/system/postfix@-.service.d
+    path: /etc/systemd/system/postfix.service.d
     state: directory
     owner: root
     group: root
@@ -202,7 +202,7 @@
 - name: Sandbox postfix
   ansible.builtin.template:
     src: hardening.conf.j2
-    dest: /etc/systemd/system/postfix@-.service.d/sovereign-hardening.conf
+    dest: /etc/systemd/system/postfix.service.d/sovereign-hardening.conf
     owner: root
     group: root
     mode: "0644"

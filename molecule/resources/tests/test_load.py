@@ -21,7 +21,7 @@ BOB = "sovtest-bob-pass"
 MESSAGES = 300
 REPORT = "/var/tmp/sovtest-load-report.txt"
 SAMPLES = "/var/tmp/sovtest-mem.log"
-SERVICES = ["dovecot", "rspamd", "redis-server", "postfix@-", "nginx", "unbound", "radicale", "sovereign-backup"]
+SERVICES = ["dovecot", "rspamd", "redis-server", "postfix", "nginx", "unbound", "radicale", "sovereign-backup"]
 
 
 def wait_inactive(host, unit, seconds):
