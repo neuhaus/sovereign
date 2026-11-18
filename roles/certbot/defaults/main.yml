@@ -18,3 +18,7 @@ certbot_reload_services:
   - nginx
   - postfix
   - dovecot
+
+# The deploy hook records the certificate's expiry here for node_exporter
+# (sovereign_certificate_expiry_timestamp_seconds).
+certbot_metrics_dir: "{{ node_exporter_textfile_dir | default('/var/lib/prometheus/node-exporter') }}"

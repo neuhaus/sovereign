@@ -1,0 +1,173 @@
+# Example Prometheus alert rules for a Sovereign mail server.
+#
+# Load them in your Prometheus (rule_files), which scrapes the server's node
+# exporter on port 9100 (only from monitoring_sources). Thresholds are
+# starting points for about 2 GB of RAM and a small number of users; adjust
+# them in your copy. Checked with `promtool check rules` and unit-tested in
+# alerts.test.yml.
+---
+groups:
+  - name: sovereign
+    rules:
+      # --- Reachability ---------------------------------------------------
+      - alert: SovereignExporterDown
+        expr: up == 0
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "{{ $labels.instance }}: metrics unreachable"
+          description: >-
+            The node exporter has not answered for 5 minutes: the server, its network or the
+            exporter is down. All other alerts are blind until it is back.
+
+      # --- systemd --------------------------------------------------------
+      - alert: SovereignUnitFailed
+        expr: node_systemd_unit_state{state="failed"} == 1
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.instance }}: {{ $labels.name }} failed"
+          description: >-
+            systemctl status {{ $labels.name }}; journalctl -u {{ $labels.name }}. Covers the
+            timers' jobs too: backup, certbot renewal, support check.
+
+      # --- Mail queue -----------------------------------------------------
+      - alert: SovereignMailQueueDeferred
+        expr: sovereign_postfix_queue_messages{queue="deferred"} > 50
+        for: 30m
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.instance }}: {{ $value }} deferred messages"
+          description: "Mail is not getting out: postqueue -p shows why. A blocklisted address, a remote outage or a DANE/MTA-STS failure are the usual causes."
+
+      - alert: SovereignMailQueueStuck
+        expr: sovereign_postfix_queue_oldest_deferred_seconds > 12 * 3600
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.instance }}: a message has been deferred for over 12 hours"
+          description: "Postfix gives up after 5 days and bounces it. postqueue -p shows the reason."
+
+      - alert: SovereignMailQueueNotMeasured
+        expr: time() - sovereign_postfix_queue_last_run_timestamp_seconds > 15 * 60
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.instance }}: mail queue not measured for 15 minutes"
+          description: "sovereign-mailqueue-metrics.timer should run every 5 minutes."
+
+      # --- Disk -----------------------------------------------------------
+      - alert: SovereignDiskSpaceLow
+        expr: >-
+          node_filesystem_avail_bytes{fstype!~"tmpfs|ramfs|overlay|squashfs"}
+            / node_filesystem_size_bytes{fstype!~"tmpfs|ramfs|overlay|squashfs"} < 0.10
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.instance }}: {{ $labels.mountpoint }} below 10% free"
+          description: "Postfix stops accepting mail when the queue file system runs low, Dovecot fails to deliver when mailboxes can't grow."
+
+      - alert: SovereignDiskSpaceCritical
+        expr: >-
+          node_filesystem_avail_bytes{fstype!~"tmpfs|ramfs|overlay|squashfs"}
+            / node_filesystem_size_bytes{fstype!~"tmpfs|ramfs|overlay|squashfs"} < 0.05
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "{{ $labels.instance }}: {{ $labels.mountpoint }} below 5% free"
+
+      - alert: SovereignInodesLow
+        expr: >-
+          node_filesystem_files_free{fstype!~"tmpfs|ramfs|overlay|squashfs"}
+            / node_filesystem_files{fstype!~"tmpfs|ramfs|overlay|squashfs"} < 0.10
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.instance }}: {{ $labels.mountpoint }} below 10% free inodes"
+          description: "Maildir stores one file per message, so inodes can run out before space does."
+
+      # --- Memory ---------------------------------------------------------
+      - alert: SovereignMemoryLow
+        expr: node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes < 0.10
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.instance }}: less than 10% memory available"
+          description: "Full-text indexing, Rspamd and PHP compete for memory; see the memory notes in docs/ADMINISTRATION.md."
+
+      # --- Certificate ----------------------------------------------------
+      # certbot renews 30 days before expiry, so 14 days left means renewals
+      # have failed for two weeks.
+      - alert: SovereignCertificateExpiresSoon
+        expr: sovereign_certificate_expiry_timestamp_seconds - time() < 14 * 86400
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.instance }}: certificate {{ $labels.name }} expires in {{ $value | humanizeDuration }}"
+          description: "Renewal is failing: journalctl -u certbot. The metric only advances when the services reloaded the new certificate."
+
+      - alert: SovereignCertificateExpiresVerySoon
+        expr: sovereign_certificate_expiry_timestamp_seconds - time() < 3 * 86400
+        labels:
+          severity: critical
+        annotations:
+          summary: "{{ $labels.instance }}: certificate {{ $labels.name }} expires in {{ $value | humanizeDuration }}"
+
+      # --- Backups --------------------------------------------------------
+      - alert: SovereignBackupMissing
+        expr: time() - sovereign_backup_last_success_timestamp_seconds > 26 * 3600
+        labels:
+          severity: critical
+        annotations:
+          summary: "{{ $labels.instance }}: no complete backup for over 26 hours"
+          description: "journalctl -u sovereign-backup; see docs/BACKUP.md."
+
+      - alert: SovereignBackupNeverRan
+        expr: absent(sovereign_backup_last_success_timestamp_seconds)
+        for: 26h
+        labels:
+          severity: critical
+        annotations:
+          summary: "No complete backup recorded at all"
+
+      - alert: SovereignBackupFailed
+        expr: sovereign_backup_last_exit_code != 0
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.instance }}: last backup attempt ended with code {{ $value }}"
+          description: "3: files could not be read, the snapshot is incomplete. The next run usually completes; SovereignBackupMissing fires if it doesn't."
+
+      - alert: SovereignBackupCheckFailed
+        expr: >-
+          sovereign_backup_check_last_exit_code != 0
+            or time() - sovereign_backup_check_last_success_timestamp_seconds > 8 * 86400
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.instance }}: backup repository check failed or overdue"
+          description: "journalctl -u sovereign-backup-check; restic check runs weekly."
+
+      # --- Security support -----------------------------------------------
+      - alert: SovereignPackagesWithoutSecuritySupport
+        expr: sovereign_security_support_affected_packages > 0
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.instance }}: {{ $value }} packages with {{ $labels.type }} security support"
+          description: "journalctl -u sovereign-support-status names them; see docs/ADMINISTRATION.md."
+
+      - alert: SovereignSupportStatusNotChecked
+        expr: time() - sovereign_security_support_last_run_timestamp_seconds > 8 * 86400
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.instance }}: security support status not checked for over 8 days"

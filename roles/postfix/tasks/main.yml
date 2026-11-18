@@ -147,3 +147,11 @@
     name: postfix
     state: started
     enabled: true
+
+- name: Install the queue measurement
+  ansible.builtin.template:
+    src: sovereign-mailqueue.j2
+    dest: /usr/local/sbin/sovereign-mailqueue
+    owner: root
+    group: root
+    mode: "0755"

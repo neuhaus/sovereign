@@ -24,6 +24,20 @@
         update_cache: true
         cache_valid_time: 3600
 
+    # promtool checks monitoring/alerts.yml; the Prometheus server itself is
+    # not needed.
+    - name: Install promtool
+      ansible.builtin.apt:
+        name: prometheus
+        state: present
+        install_recommends: false
+
+    - name: Stop the Prometheus server
+      ansible.builtin.systemd_service:
+        name: prometheus
+        state: stopped
+        enabled: false
+
     - name: Create the key for the SSH tests
       ansible.builtin.command:
         argv: [ssh-keygen, -q, -t, ed25519, -N, "", -f, /root/.ssh/sovtest_ed25519]

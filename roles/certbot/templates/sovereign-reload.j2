@@ -18,3 +18,21 @@ if [ -n "$failed" ]; then
 fi
 mkdir -p /run/sovereign
 date --iso-8601=seconds > /run/sovereign/certbot-deployed
+
+# Expiry of the certificate the services now use, for node_exporter. Written
+# only after all reloads worked: if they failed, the old date stays, and the
+# expiry alert fires before the running certificate runs out.
+cert=/etc/letsencrypt/live/{{ certbot_domains[0] }}/cert.pem
+expiry=$(date -d "$(openssl x509 -in "$cert" -noout -enddate | cut -d= -f2)" +%s) || expiry=""
+if [ -z "$expiry" ]; then
+    echo "certbot deploy hook: cannot read the expiry of $cert" >&2
+    exit 1
+fi
+mkdir -p {{ certbot_metrics_dir }}
+file={{ certbot_metrics_dir }}/sovereign_certificate.prom
+printf '%s\n' \
+    "# HELP sovereign_certificate_expiry_timestamp_seconds Expiry of the certificate the services use." \
+    "# TYPE sovereign_certificate_expiry_timestamp_seconds gauge" \
+    "sovereign_certificate_expiry_timestamp_seconds{name=\"{{ certbot_domains[0] }}\"} $expiry" > "$file.new"
+chmod 0644 "$file.new"
+mv "$file.new" "$file"

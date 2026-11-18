@@ -1,0 +1,162 @@
+# Unit tests for alerts.yml: promtool test rules alerts.test.yml
+---
+rule_files:
+  - alerts.yml
+
+evaluation_interval: 1m
+
+tests:
+  # A failed unit alerts after 5 minutes, a healthy one never.
+  - interval: 1m
+    input_series:
+      - series: 'node_systemd_unit_state{instance="mail",name="sovereign-backup.service",state="failed"}'
+        values: '0 0 1x10'
+      - series: 'node_systemd_unit_state{instance="mail",name="nginx.service",state="failed"}'
+        values: '0x12'
+    alert_rule_test:
+      - eval_time: 5m
+        alertname: SovereignUnitFailed
+        exp_alerts: []
+      - eval_time: 9m
+        alertname: SovereignUnitFailed
+        exp_alerts:
+          - exp_labels: {instance: mail, name: sovereign-backup.service, state: failed, severity: warning}
+            exp_annotations:
+              summary: "mail: sovereign-backup.service failed"
+              description: >-
+                systemctl status sovereign-backup.service; journalctl -u sovereign-backup.service.
+                Covers the timers' jobs too: backup, certbot renewal, support check.
+
+  # The queue: many deferred messages, one of them old; the measurement stops.
+  - interval: 1m
+    input_series:
+      - series: 'sovereign_postfix_queue_messages{instance="mail",queue="deferred"}'
+        values: '10 60x40'
+      - series: 'sovereign_postfix_queue_oldest_deferred_seconds{instance="mail"}'
+        values: '43000+60x40'
+      - series: 'sovereign_postfix_queue_last_run_timestamp_seconds{instance="mail"}'
+        values: '0x40'
+    alert_rule_test:
+      - eval_time: 20m
+        alertname: SovereignMailQueueDeferred
+        exp_alerts: []
+      - eval_time: 32m
+        alertname: SovereignMailQueueDeferred
+        exp_alerts:
+          - exp_labels: {instance: mail, queue: deferred, severity: warning}
+            exp_annotations:
+              summary: "mail: 60 deferred messages"
+              description: >-
+                Mail is not getting out: postqueue -p shows why. A blocklisted address, a remote
+                outage or a DANE/MTA-STS failure are the usual causes.
+      - eval_time: 32m
+        alertname: SovereignMailQueueStuck
+        exp_alerts:
+          - exp_labels: {instance: mail, severity: warning}
+            exp_annotations:
+              summary: "mail: a message has been deferred for over 12 hours"
+              description: "Postfix gives up after 5 days and bounces it. postqueue -p shows the reason."
+      - eval_time: 10m
+        alertname: SovereignMailQueueNotMeasured
+        exp_alerts: []
+      - eval_time: 20m
+        alertname: SovereignMailQueueNotMeasured
+        exp_alerts:
+          - exp_labels: {instance: mail, severity: warning}
+            exp_annotations:
+              summary: "mail: mail queue not measured for 15 minutes"
+              description: "sovereign-mailqueue-metrics.timer should run every 5 minutes."
+
+  # 20 days left: fine; 10 days: warning; 2 days: warning and critical.
+  - interval: 1m
+    input_series:
+      - series: 'sovereign_certificate_expiry_timestamp_seconds{instance="mail",name="mail.example.org"}'
+        values: '1728000 864000 172800'
+    alert_rule_test:
+      - eval_time: 0m
+        alertname: SovereignCertificateExpiresSoon
+        exp_alerts: []
+      - eval_time: 1m
+        alertname: SovereignCertificateExpiresSoon
+        exp_alerts:
+          - exp_labels: {instance: mail, name: mail.example.org, severity: warning}
+            exp_annotations:
+              summary: "mail: certificate mail.example.org expires in 9d 23h 59m 0s"
+              description: "Renewal is failing: journalctl -u certbot. The metric only advances when the services reloaded the new certificate."
+      - eval_time: 1m
+        alertname: SovereignCertificateExpiresVerySoon
+        exp_alerts: []
+      - eval_time: 2m
+        alertname: SovereignCertificateExpiresVerySoon
+        exp_alerts:
+          - exp_labels: {instance: mail, name: mail.example.org, severity: critical}
+            exp_annotations:
+              summary: "mail: certificate mail.example.org expires in 1d 23h 58m 0s"
+
+  # Backups: the last success stays at 0, the attempt fails, the check is fine.
+  - interval: 1h
+    input_series:
+      - series: 'sovereign_backup_last_success_timestamp_seconds{instance="mail"}'
+        values: '0x30'
+      - series: 'sovereign_backup_last_exit_code{instance="mail"}'
+        values: '0 3x30'
+      - series: 'sovereign_backup_check_last_exit_code{instance="mail"}'
+        values: '0x30'
+      - series: 'sovereign_backup_check_last_success_timestamp_seconds{instance="mail"}'
+        values: '0+3600x30'
+    alert_rule_test:
+      - eval_time: 26h
+        alertname: SovereignBackupMissing
+        exp_alerts: []
+      - eval_time: 27h
+        alertname: SovereignBackupMissing
+        exp_alerts:
+          - exp_labels: {instance: mail, severity: critical}
+            exp_annotations:
+              summary: "mail: no complete backup for over 26 hours"
+              description: "journalctl -u sovereign-backup; see docs/BACKUP.md."
+      - eval_time: 2h
+        alertname: SovereignBackupFailed
+        exp_alerts:
+          - exp_labels: {instance: mail, severity: warning}
+            exp_annotations:
+              summary: "mail: last backup attempt ended with code 3"
+              description: "3: files could not be read, the snapshot is incomplete. The next run usually completes; SovereignBackupMissing fires if it doesn't."
+      - eval_time: 27h
+        alertname: SovereignBackupCheckFailed
+        exp_alerts: []
+      - eval_time: 27h
+        alertname: SovereignBackupNeverRan
+        exp_alerts: []
+
+  # No backup metric at all for a day.
+  - interval: 1h
+    input_series:
+      - series: 'up{instance="mail",job="node"}'
+        values: '1x30'
+    alert_rule_test:
+      - eval_time: 25h
+        alertname: SovereignBackupNeverRan
+        exp_alerts: []
+      - eval_time: 27h
+        alertname: SovereignBackupNeverRan
+        exp_alerts:
+          - exp_labels: {severity: critical}
+            exp_annotations:
+              summary: "No complete backup recorded at all"
+
+  # Security support: an ended package alerts at once, limited ones are separate.
+  - interval: 1m
+    input_series:
+      - series: 'sovereign_security_support_affected_packages{instance="mail",type="ended"}'
+        values: '2'
+      - series: 'sovereign_security_support_affected_packages{instance="mail",type="limited"}'
+        values: '0'
+    alert_rule_test:
+      - eval_time: 0m
+        alertname: SovereignPackagesWithoutSecuritySupport
+        exp_alerts:
+          - exp_labels: {instance: mail, type: ended, severity: warning}
+            exp_annotations:
+              summary: "mail: 2 packages with ended security support"
+              description: "journalctl -u sovereign-support-status names them; see docs/ADMINISTRATION.md."

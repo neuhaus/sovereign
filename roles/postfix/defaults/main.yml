@@ -32,3 +32,15 @@ postfix_maildb_group: "{{ maildb_group | default('maildb') }}"
 # this domain, which must accept mail (bounces to forwarded messages).
 postfix_srs_domain: "{{ (mail_domains | default([]))[0] | default(postfix_hostname) }}"
 postfix_local_domains: "{{ mail_domains | default([]) }}"
+
+# Queue sizes and the age of the oldest deferred message, every 5 minutes, as
+# metrics for node_exporter (sovereign_postfix_queue_*).
+postfix_metrics_dir: "{{ node_exporter_textfile_dir | default('/var/lib/prometheus/node-exporter') }}"
+
+# Picked up by the systemd_timers role.
+postfix_timer_jobs:
+  - name: mailqueue-metrics
+    description: Measure the Postfix queue for node_exporter
+    command: /usr/local/sbin/sovereign-mailqueue
+    on_calendar: "*:0/5"
+    persistent: false

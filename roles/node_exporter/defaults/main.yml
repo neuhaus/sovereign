@@ -5,3 +5,7 @@ node_exporter_listen_address: ":9100"
 
 # *.prom files here become metrics, e.g. the time of the last backup.
 node_exporter_textfile_dir: /var/lib/prometheus/node-exporter
+
+# Units whose state is exported (node_systemd_unit_state). Services and
+# timers only: mounts, devices and scopes would add hundreds of series.
+node_exporter_systemd_units: '.+\\.(service|timer)'

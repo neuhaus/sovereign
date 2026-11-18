@@ -64,6 +64,14 @@
   changed_when: true
   notify: Certificate changed
 
+# Servers set up before the hook recorded the expiry get it once here; later
+# the hook keeps it current.
+- name: Record the certificate expiry
+  ansible.builtin.command:
+    argv: [/etc/letsencrypt/renewal-hooks/deploy/sovereign-reload]
+    creates: "{{ certbot_metrics_dir }}/sovereign_certificate.prom"
+  when: certbot_current_san.rc == 0
+
 - name: Enable the renewal timer
   ansible.builtin.systemd_service:
     name: certbot.timer

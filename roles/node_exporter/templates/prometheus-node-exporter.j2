@@ -1,3 +1,5 @@
 # {{ ansible_managed }}
 # Arguments for prometheus-node-exporter, see `prometheus-node-exporter --help`.
-ARGS="--web.listen-address={{ node_exporter_listen_address }} --collector.textfile.directory={{ node_exporter_textfile_dir }}"
+# The systemd collector exports the state of each service and timer, so a
+# failed job (backup, certbot, support check) raises an alert.
+ARGS="--web.listen-address={{ node_exporter_listen_address }} --collector.textfile.directory={{ node_exporter_textfile_dir }} --collector.systemd --collector.systemd.unit-include={{ node_exporter_systemd_units }}"

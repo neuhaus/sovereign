@@ -1,0 +1,39 @@
+#!/bin/bash
+# {{ ansible_managed }}
+# Postfix queue sizes and the age of the oldest deferred message, for
+# node_exporter. Counts the queue files directly: postqueue would also work,
+# but parsing its output for every message is slower on a full queue.
+set -euo pipefail
+
+spool=$(postconf -h queue_directory)
+file={{ postfix_metrics_dir }}/sovereign_postfix_queue.prom
+now=$(date +%s)
+
+metrics=(
+    "# HELP sovereign_postfix_queue_messages Messages in each Postfix queue."
+    "# TYPE sovereign_postfix_queue_messages gauge"
+)
+for queue in incoming active deferred hold; do
+    count=$(find "$spool/$queue" -type f 2>/dev/null | wc -l)
+    metrics+=("sovereign_postfix_queue_messages{queue=\"$queue\"} $count")
+done
+
+# 0 when nothing is deferred.
+oldest=$(find "$spool/deferred" -type f -printf '%T@\n' 2>/dev/null | sort -n | head -1)
+age=0
+if [ -n "$oldest" ]; then
+    age=$((now - ${oldest%.*}))
+fi
+metrics+=(
+    "# HELP sovereign_postfix_queue_oldest_deferred_seconds Age of the oldest deferred message, 0 if none."
+    "# TYPE sovereign_postfix_queue_oldest_deferred_seconds gauge"
+    "sovereign_postfix_queue_oldest_deferred_seconds $age"
+    "# HELP sovereign_postfix_queue_last_run_timestamp_seconds When the queue was last measured."
+    "# TYPE sovereign_postfix_queue_last_run_timestamp_seconds gauge"
+    "sovereign_postfix_queue_last_run_timestamp_seconds $now"
+)
+
+mkdir -p {{ postfix_metrics_dir }}
+printf '%s\n' "${metrics[@]}" > "$file.new"
+chmod 0644 "$file.new"
+mv "$file.new" "$file"
