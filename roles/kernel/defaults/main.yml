@@ -1,0 +1,69 @@
+---
+# Kernel settings (/etc/sysctl.d/90-sovereign.conf). Each closes a path that
+# exploits use after a service has been taken over; none is needed on a mail
+# server. Some are Debian's defaults already; set here, a change of default
+# can't undo them unnoticed. A key the running kernel doesn't know fails the
+# run: on a provider's own kernel, override this list.
+kernel_sysctl:
+  # Kernel addresses and the kernel log only for root.
+  kernel.kptr_restrict: 2
+  kernel.dmesg_restrict: 1
+  # BPF, user namespaces, io_uring, userfaultfd, performance events and line
+  # disciplines: frequent vehicles of kernel exploits, only for root (or off).
+  # systemd sets up its sandboxes and IP filters as root, so they still work.
+  kernel.unprivileged_bpf_disabled: 1
+  net.core.bpf_jit_harden: 2
+  kernel.unprivileged_userns_clone: 0
+  kernel.io_uring_disabled: 2
+  vm.unprivileged_userfaultfd: 0
+  kernel.perf_event_paranoid: 3
+  dev.tty.ldisc_autoload: 0
+  # Only root may attach to other processes (ptrace): a taken-over process
+  # can't read the memory of another one running as the same user.
+  kernel.yama.ptrace_scope: 2
+  # No loading of another kernel at runtime; no core dumps of setuid programs.
+  kernel.kexec_load_disabled: 1
+  fs.suid_dumpable: 0
+  fs.protected_symlinks: 1
+  fs.protected_hardlinks: 1
+  fs.protected_fifos: 2
+  fs.protected_regular: 2
+  # No rerouting by forged ICMP redirects or source-routed packets. IPv6
+  # router advertisements stay on: many servers get their address that way.
+  net.ipv4.conf.all.accept_redirects: 0
+  net.ipv4.conf.default.accept_redirects: 0
+  net.ipv6.conf.all.accept_redirects: 0
+  net.ipv6.conf.default.accept_redirects: 0
+  net.ipv4.conf.all.send_redirects: 0
+  net.ipv4.conf.default.send_redirects: 0
+  net.ipv4.conf.all.accept_source_route: 0
+  net.ipv4.conf.default.accept_source_route: 0
+  net.ipv6.conf.all.accept_source_route: 0
+  net.ipv6.conf.default.accept_source_route: 0
+  net.ipv4.tcp_syncookies: 1
+
+# Kernel modules that can't be loaded (/etc/modprobe.d/sovereign.conf):
+# network protocols and file systems no mail server uses, which the kernel
+# would otherwise load on demand, e.g. when any user opens such a socket.
+# Many past kernel holes were in exactly these.
+kernel_blocked_modules:
+  - dccp
+  - sctp
+  - rds
+  - tipc
+  - n_hdlc
+  - ax25
+  - netrom
+  - rose
+  - x25
+  - appletalk
+  - atm
+  - can
+  - cramfs
+  - freevxfs
+  - jffs2
+  - hfs
+  - hfsplus
+  - udf
+  - vivid
+  - firewire_core

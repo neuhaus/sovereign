@@ -8,6 +8,12 @@ A few rules apply throughout: Debian packages only, every handler checks the con
 
 Stops early on anything unsupported: an old ansible-core, or a system other than Debian 13 or Testing. It sets the `sovereign_debian_track` fact, which is the only place the release is determined. Testing is recognised by `/sid` in `/etc/debian_version`, which it shares with unstable, because Testing has no stable version number to test for.
 
+## kernel
+
+Kernel settings that close the usual paths from a taken-over service into the kernel: no BPF, user namespaces, io_uring, userfaultfd or performance events for normal users, kernel addresses and log only for root, no ptrace even between processes of the same user, no loading another kernel at runtime, no ICMP redirects or source routing. Several of these differ from Debian's defaults (`ptrace_scope`, `kptr_restrict`, user namespaces, io_uring, redirects); the rest are set anyway, so a change of default can't undo them. systemd sets up the sandboxes and IP filters as root, so they still work. Network protocols and file systems no mail server needs (DCCP, SCTP, RDS, TIPC, HFS, UDF and others) can't be loaded, also not on demand.
+
+A key the running kernel doesn't know fails the run, instead of being skipped silently; on a provider's own kernel, adjust `kernel_sysctl`. In a container only the files are written, since it shares the host's kernel. Boot parameters (`init_on_free`, `lockdown`) are not set: a wrong kernel command line can keep a server with a remote disk unlock from booting, and some providers ignore it anyway. With Secure Boot, Debian's kernel enables lockdown itself.
+
 ## logging
 
 All services log to the journal except Sovereign's nginx sites. The journal keeps 30 days and at most 1 GB (`logging_journal_max_retention`, `logging_journal_max_use`); mail logs hold addresses and client IPs, so the retention is a privacy decision as well. Rspamd and fail2ban are switched from their own files to the journal, so one setting covers them all, and `journalctl` shows Postfix, Dovecot and Rspamd lines for a message together. The journal can't compress by age: journald compresses larger entries as it writes them.

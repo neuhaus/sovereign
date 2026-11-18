@@ -1,0 +1,25 @@
+---
+- name: Block unneeded kernel modules
+  ansible.builtin.template:
+    src: modprobe.conf.j2
+    dest: /etc/modprobe.d/sovereign.conf
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Configure kernel settings
+  ansible.builtin.template:
+    src: sysctl.conf.j2
+    dest: /etc/sysctl.d/90-sovereign.conf
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Kernel settings changed
+
+# A container shares the host's kernel and can't change its settings; the
+# file is still written, for a later move to a VM or a real server.
+- name: Check whether this is a container
+  ansible.builtin.command: systemd-detect-virt --container --quiet
+  register: kernel_container
+  changed_when: false
+  failed_when: false

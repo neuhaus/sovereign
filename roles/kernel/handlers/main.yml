@@ -1,0 +1,9 @@
+---
+# sysctl -p fails on a key the running kernel doesn't know, instead of
+# skipping it silently like systemd-sysctl.
+- name: Apply kernel settings
+  ansible.builtin.command:
+    argv: [sysctl, --quiet, --load, /etc/sysctl.d/90-sovereign.conf]
+  changed_when: true
+  when: kernel_container.rc != 0
+  listen: Kernel settings changed

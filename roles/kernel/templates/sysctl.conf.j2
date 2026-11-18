@@ -1,0 +1,5 @@
+# {{ ansible_managed }}
+# See the kernel role's defaults for why each is set.
+{% for key, value in kernel_sysctl.items() %}
+{{ key }} = {{ value }}
+{% endfor %}

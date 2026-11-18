@@ -1,0 +1,7 @@
+# {{ ansible_managed }}
+# Modules no mail server needs; "install ... /bin/false" also stops loading
+# on demand, which "blacklist" alone does not.
+{% for module in kernel_blocked_modules %}
+install {{ module }} /bin/false
+blacklist {{ module }}
+{% endfor %}
