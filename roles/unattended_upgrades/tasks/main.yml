@@ -18,6 +18,27 @@
     - 20auto-upgrades
     - 52sovereign-unattended-upgrades
 
+# Security updates of libraries (OpenSSL, glibc) only take effect once the
+# services using them restart; needrestart does that after every upgrade,
+# also unattended ones, without asking.
+- name: Install needrestart
+  ansible.builtin.apt:
+    name: needrestart
+    state: present
+
+- name: Restart services automatically after upgrades
+  ansible.builtin.copy:
+    dest: /etc/needrestart/conf.d/sovereign.conf
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      # Managed by Ansible (unattended_upgrades role).
+      # Restart affected services automatically ('a'), also from unattended
+      # upgrades. Kernel and microcode updates still need a reboot; see
+      # unattended_upgrades_automatic_reboot.
+      $nrconf{restart} = 'a';
+
 - name: Enable the apt timers
   ansible.builtin.systemd_service:
     name: "{{ item }}"

@@ -159,6 +159,16 @@ def test_unattended_upgrades_dry_run(host):
     assert result.rc == 0, result.stderr
 
 
+
+def test_needrestart_restarts_automatically(host):
+    assert host.package("needrestart").is_installed
+    # Batch mode, list only: reports what it would restart without doing it,
+    # which in the middle of the tests could pull services away.
+    result = host.run("needrestart -b -r l")
+    assert result.rc == 0, result.stderr
+    assert "$nrconf{restart} = 'a';" in host.file("/etc/needrestart/conf.d/sovereign.conf").content_string
+
+
 # Security support status (debian-security-support)
 
 SUPPORT_METRICS = "/var/lib/prometheus/node-exporter/sovereign_security_support.prom"
