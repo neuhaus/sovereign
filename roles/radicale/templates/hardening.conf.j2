@@ -1,0 +1,27 @@
+# {{ ansible_managed }}
+# Tightens Debian's sandbox for Radicale, which parses the iCalendar and
+# vCard data clients send. It listens on 127.0.0.1 for nginx, checks logins
+# over Dovecot's socket and makes no outgoing connections at all, so systemd
+# drops every packet to or from anything but loopback: a taken-over Radicale
+# can't send data out or attack other servers.
+[Service]
+CapabilityBoundingSet=
+RestrictSUIDSGID=yes
+LockPersonality=yes
+RestrictRealtime=yes
+RestrictNamespaces=yes
+ProtectKernelLogs=yes
+ProtectClock=yes
+ProtectHostname=yes
+ProtectProc=invisible
+ProcSubset=pid
+MemoryDenyWriteExecute=yes
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+RestrictAddressFamilies=AF_UNIX AF_INET
+IPAddressDeny=any
+IPAddressAllow=localhost
+# Allowlist: an empty /var with only Radicale's data, cache and log directory.
+TemporaryFileSystem=/var:ro /srv:ro /opt:ro /mnt:ro /media:ro
+BindPaths=/var/lib/radicale -/var/cache/radicale -/var/log/radicale
+InaccessiblePaths={{ radicale_inaccessible_paths | map('regex_replace', '^', '-') | join(' ') }}

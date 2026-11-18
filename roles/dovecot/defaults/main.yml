@@ -89,3 +89,11 @@ dovecot_inaccessible_paths:
   - /etc/nginx
   - /etc/radicale
   - /etc/rspamd
+
+# Only these local users (and root) may connect to Rspamd's controller, which
+# trusts local connections without a password: the mail user (spam training),
+# Rspamd itself, and the admin, whose SSH tunnel to the web interface comes
+# from the SSH session running as that user.
+dovecot_rspamd_controller_port: 11334
+dovecot_rspamd_controller_admin: "{{ openssh_login_user | default(ansible_facts['env']['SUDO_USER'] | default(ansible_facts['user_id'])) }}"
+dovecot_rspamd_controller_users: "{{ [dovecot_vmail_user, '_rspamd', dovecot_rspamd_controller_admin] | reject('equalto', 'root') | unique | list }}"

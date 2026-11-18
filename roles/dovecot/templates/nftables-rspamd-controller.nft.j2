@@ -1,0 +1,7 @@
+# {{ ansible_managed }}
+# Rspamd's controller accepts local connections without a password; that is
+# how the spam training scripts (run as {{ dovecot_vmail_user }}) reach it. Any other
+# local process could otherwise train the filter or change its settings,
+# e.g. a taken-over Roundcube teaching it that phishing is ham. Allowed:
+# root, {{ dovecot_rspamd_controller_users | join(', ') }}.
+tcp dport {{ dovecot_rspamd_controller_port }} oifname "lo" meta skuid != { 0, {{ dovecot_rspamd_controller_uids | join(', ') }} } reject with tcp reset

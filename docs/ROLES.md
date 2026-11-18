@@ -42,6 +42,8 @@ Unbound always recurses by itself; there is no forwarder setting. A network that
 
 Only Sovereign's own table is replaced on reload, not the whole ruleset, because `flush ruleset` would also remove fail2ban's table and with it all bans. Exporter ports open only for `monitoring_sources`; with an empty list no rule is rendered at all.
 
+**Who may reach a loopback port:** roles add rules to the output chain (`/etc/nftables.d/sovereign-output/*.nft`, with numeric user IDs, because nftables resolves names only when it loads the rules, before later roles create their users). Radicale's port is only for nginx: fail2ban trusts the address nginx puts in `X-Forwarded-For`, which another local process could otherwise fake to get innocent addresses banned. Rspamd's controller, which trusts local connections without a password, is only for the spam training scripts (`vmail`), Rspamd itself and the admin user (`dovecot_rspamd_controller_users`); otherwise any local process, a taken-over Roundcube for instance, could train the spam filter.
+
 The open ports are listed in the [README](../README.md#network-ports).
 
 ## fail2ban
@@ -133,6 +135,8 @@ The metrics port (9900) listens only on loopback without `monitoring_sources`, a
 ## radicale
 
 Behind nginx, on its own host name, because it stores data users upload, and that should not share an origin with the webmail.
+
+Debian's unit already sandboxes Radicale (own user, read-only system, no new privileges); a drop-in adds the rest: no capabilities, no writable executable memory, a system call filter, no view of other processes, and under `/var` only its own data (an allowlist); in `/etc` other services' secrets are hidden, the TLS keys too, since it speaks plain HTTP to nginx. **It can't connect anywhere but loopback** (`IPAddressDeny=any`, `IPAddressAllow=localhost`): a taken-over Radicale can't send data out or attack other servers. Only nginx (and root) may connect to its port, see nftables. What no sandbox changes: all calendars and address books belong to the `radicale` user.
 
 It has its own small authentication plugin. Both Radicale's built-in `dovecot` type and `python3-radicale-dovecot-auth` send no client address, so Dovecot keeps one auth penalty for all of them: one wrong password from anyone delays every user's login by up to 15 seconds, past their timeout, so a stranger could lock out everybody. They also use the process ID as `CPID`, which must be unique per connection although Radicale uses threads, and the built-in type reads Dovecot 2.4's handshake with a timing-dependent read. The plugin sends `no-penalty`; brute force is handled by Radicale's delay and the fail2ban jail.
 

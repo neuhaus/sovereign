@@ -3,4 +3,4 @@
 # Called by Dovecot IMAPSieve with the message on stdin: train Rspamd's global
 # Bayes classifier. Runs as the mail user; the Rspamd controller accepts local
 # connections without a password.
-exec /usr/bin/rspamc --connect 127.0.0.1:11334 --timeout 30 {{ item.command }}
+exec /usr/bin/rspamc --connect 127.0.0.1:{{ dovecot_rspamd_controller_port }} --timeout 30 {{ item.command }}

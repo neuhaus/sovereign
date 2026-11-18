@@ -112,6 +112,22 @@
       loop_control:
         label: "{{ item.name }}"
 
+    - name: Read the user database
+      ansible.builtin.getent:
+        database: passwd
+
+    # Numeric IDs: nftables resolves user names when it loads the rules.
+    - name: Let only the training scripts, Rspamd and the admin reach the controller
+      ansible.builtin.template:
+        src: nftables-rspamd-controller.nft.j2
+        dest: "{{ nftables_output_rules_dir | default('/etc/nftables.d/sovereign-output') }}/rspamd-controller.nft"
+        owner: root
+        group: root
+        mode: "0644"
+      vars:
+        dovecot_rspamd_controller_uids: "{{ dovecot_rspamd_controller_users | map('extract', ansible_facts['getent_passwd']) | map(attribute=1) | list }}"
+      notify: Nftables configuration changed
+
     - name: Install the IMAPSieve scripts
       ansible.builtin.copy:
         src: "{{ item }}"

@@ -1,0 +1,5 @@
+# {{ ansible_managed }}
+# Only nginx (and root) may connect to Radicale. fail2ban trusts the client
+# address in X-Forwarded-For because nginx overwrites it; another local
+# process connecting directly could set it, and get innocent addresses banned.
+tcp dport {{ radicale_port }} oifname "lo" meta skuid != { 0, {{ radicale_nft_uids | join(', ') }} } reject with tcp reset

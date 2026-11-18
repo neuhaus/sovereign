@@ -42,5 +42,8 @@ table inet sovereign {
 
     chain output {
         type filter hook output priority filter; policy accept;
+
+        # Added by other roles: which local users may reach a loopback port.
+        include "{{ nftables_output_rules_dir }}/*.nft"
     }
 }

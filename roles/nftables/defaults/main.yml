@@ -13,3 +13,8 @@ nftables_monitoring_tcp_ports:
 # variable `monitoring_sources` in the inventory. With an empty list no rule is
 # rendered and the exporter ports stay closed.
 nftables_monitoring_sources: "{{ monitoring_sources | default([]) }}"
+
+# Rules other roles add to the output chain (*.nft), e.g. which local users may
+# connect to a loopback port. Roles write them with numeric user IDs, once the
+# users exist; nftables would refuse names it can't resolve yet.
+nftables_output_rules_dir: /etc/nftables.d/sovereign-output

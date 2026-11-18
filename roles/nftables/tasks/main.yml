@@ -6,6 +6,14 @@
     update_cache: true
     cache_valid_time: 3600
 
+- name: Create the directory for rules of other roles
+  ansible.builtin.file:
+    path: "{{ nftables_output_rules_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
 - name: Configure the firewall ruleset
   ansible.builtin.template:
     src: nftables.conf.j2

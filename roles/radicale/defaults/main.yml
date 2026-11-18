@@ -26,3 +26,20 @@ radicale_shared_collections: []
 
 # Largest accepted upload (address books with photos can get big).
 radicale_max_body_size: 50M
+
+# Hidden from Radicale (systemd InaccessiblePaths). Under /var it sees only
+# its own data anyway (an allowlist); in /etc these are other services'
+# secrets, including the TLS keys: it speaks plain HTTP to nginx on loopback.
+# Missing paths are skipped.
+radicale_inaccessible_paths:
+  - /etc/letsencrypt
+  - /etc/ssl/private
+  - /etc/dovecot
+  - /etc/restic
+  - /etc/postsrsd.secret
+  - /etc/nginx
+  - /etc/roundcube
+  - /etc/rspamd
+
+# Local users that may connect to Radicale's port besides root: nginx.
+radicale_proxy_users: [www-data]
