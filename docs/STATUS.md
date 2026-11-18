@@ -35,8 +35,10 @@ Results at `e97fe72`, before Phase 5.5:
 
 Converge and idempotence passed in all of these. The VM failure on Testing has a
 fix, still to be tested on Testing (see below).
-Not yet run on a real server. Next: a full test run on both releases, then steps
-4 and 5 of Phase 5.5, then Phase 6 (split setup).
+Not yet run on a real server. Next: a full test run on Debian 13 (Testing once
+restic is back), then steps 4 and 5 of Phase 5.5, then Phase 6 (split setup).
+Step 4 now also covers the security support status (`check-support-status`,
+upstream issue #550).
 
 ## Phases
 
@@ -169,8 +171,9 @@ unattended_upgrades, systemd_timers, node_exporter.
 - **restic is not in Debian Testing** (November 2026): 0.19.1-1 is blocked from
   migrating ("unsatisfiable Built-Using on golang-github-cespare-xxhash"), so
   the Testing scenario fails at converge and none of its tests run. A Debian
-  packaging matter, not ours; Testing is an early warning only. Options: wait,
-  or install restic from unstable in the Testing scenario's prepare (test only).
+  packaging matter, not ours; Testing is an early warning only. Decided
+  (2026-11-12): wait for it to return to Testing instead of installing it from
+  unstable; CI's Testing job fails until then.
 
 - Roundcube connects from loopback, so all webmail logins share one Dovecot auth
   penalty: a wrong password can delay other users' webmail logins by up to 15
