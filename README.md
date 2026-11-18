@@ -83,7 +83,7 @@ Network ports
 
 | Port | Service |
 |---|---|
-| TCP 22 | SSH |
+| TCP 22 | SSH (keys only) |
 | TCP 25 | SMTP between servers |
 | TCP 80 | ACME challenges, redirect to HTTPS |
 | TCP 143 | IMAP with STARTTLS |
@@ -93,8 +93,9 @@ Network ports
 | TCP 993 | IMAP over TLS |
 | TCP 4190 | ManageSieve (filters), only with `managesieve_external: true`; otherwise loopback only, for Roundcube |
 | TCP 9100, 9900 | Metrics, only from `monitoring_sources` |
+| UDP 68, 546 | DHCP and DHCPv6 client, if the network uses DHCP |
 
-Everything else is dropped.
+Everything else is dropped, and nothing else listens on an external address: all other services use loopback or a Unix socket. A test checks both against this table.
 
 Using it
 --------

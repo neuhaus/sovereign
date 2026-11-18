@@ -40,6 +40,8 @@ Unbound always recurses by itself; there is no forwarder setting. A network that
 
 Only Sovereign's own table is replaced on reload, not the whole ruleset, because `flush ruleset` would also remove fail2ban's table and with it all bans. Exporter ports open only for `monitoring_sources`; with an empty list no rule is rendered at all.
 
+The open ports are listed in the [README](../README.md#network-ports).
+
 ## fail2ban
 
 Reads from journald, because Debian 13 has no syslog files to tail. Bans go into nftables. The sshd filter also counts OpenSSH's own penalty drops: since OpenSSH 10.1, sshd throttles a source itself and logs something else than a failed login.

@@ -19,11 +19,24 @@ def test_unbound_running(host):
 
 
 def test_unbound_not_reachable_from_outside(host):
-    # Only loopback: nothing on the instance's network address.
-    listening = host.check_output("ss --listening --numeric --tcp --udp")
-    for line in listening.splitlines():
-        if line.split()[4:5] and line.split()[4].endswith(":53"):
-            assert line.split()[4].startswith(("127.", "[::1]")), line
+    # Every socket Unbound has open is DNS on loopback, over UDP and TCP:
+    # nothing on the instance's network address, and no TCP control port
+    # (8953). Also nothing else on port 53.
+    listening = host.check_output("ss --listening --numeric --tcp --udp --processes").splitlines()[1:]
+    unbound = sorted({(line.split()[0], line.split()[4]) for line in listening if '"unbound"' in line})
+    assert unbound == [("tcp", "127.0.0.1:53"), ("udp", "127.0.0.1:53")], unbound
+    others = [line for line in listening if line.split()[4].endswith(":53") and '"unbound"' not in line]
+    assert not others, others
+
+
+def test_unbound_control_only_on_root_socket(host):
+    # unbound-control can flush the cache, add local zones and change
+    # forwarders, so it is a Unix socket for root and the unbound group only.
+    assert host.check_output("unbound-checkconf -o control-interface") == "/run/unbound.ctl"
+    sock = host.file("/run/unbound.ctl")
+    assert sock.is_socket and (sock.user, sock.group, sock.mode) == ("root", "unbound", 0o660)
+    assert "is running" in host.check_output("unbound-control status")
+    assert host.run("runuser -u nobody -- unbound-control status").rc != 0
 
 
 def test_system_resolver_uses_unbound(host):

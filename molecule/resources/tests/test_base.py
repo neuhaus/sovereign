@@ -257,3 +257,35 @@ def test_node_exporter_serves_metrics(host):
     assert host.service("prometheus-node-exporter").is_running
     metrics = host.check_output("curl --silent --fail http://127.0.0.1:9100/metrics")
     assert "node_exporter_build_info" in metrics
+
+
+# Everything that listens on a non-loopback address, by port: the firewall's
+# open ports, the exporters (firewalled to monitoring_sources) and the DHCP
+# client. A new listener fails here even though the firewall would drop its
+# traffic, so the firewall stays a second layer, not the only one. Keep in
+# sync with nftables_open_tcp_ports and the port table in README.md.
+# A socket shows up under every process holding it: Postfix's master or an
+# smtpd child, Dovecot's master or its login and stats processes.
+POSTFIX = {"master", "smtpd"}
+DOVECOT = {"dovecot", "imap-login", "stats"}
+EXTERNAL_TCP = {
+    22: {"sshd"}, 25: POSTFIX, 80: {"nginx"}, 143: DOVECOT, 443: {"nginx"}, 465: POSTFIX,
+    587: POSTFIX, 993: DOVECOT, 9100: {"prometheus-node"}, 9900: DOVECOT,
+}
+EXTERNAL_UDP_ALLOWED = {68: {"systemd-network"}, 546: {"systemd-network"}}
+
+
+def test_external_listeners_are_exactly_the_documented_ones(host):
+    loopback = ("127.", "[::1]", "[::ffff:127.")
+    tcp, udp = {}, {}
+    for line in host.check_output("ss --listening --numeric --tcp --udp --processes").splitlines()[1:]:
+        fields = line.split()
+        address = fields[4]
+        if address.startswith(loopback):
+            continue
+        port = int(address.rsplit(":", 1)[1])
+        process = fields[6].split('"')[1] if len(fields) > 6 and '"' in fields[6] else "?"
+        (tcp if fields[0] == "tcp" else udp).setdefault(port, set()).add(process)
+    assert set(tcp) == set(EXTERNAL_TCP), tcp
+    assert all(names <= EXTERNAL_TCP[port] for port, names in tcp.items()), tcp
+    assert all(port in EXTERNAL_UDP_ALLOWED and names <= EXTERNAL_UDP_ALLOWED[port] for port, names in udp.items()), udp
