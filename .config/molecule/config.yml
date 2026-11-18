@@ -146,6 +146,11 @@ provisioner:
         # The mail tests run their clients on dns and trigger failures on purpose
         # (wrong passwords, refused TLS versions, port probes); pebble stays
         # bannable for the fail2ban test.
+        # The submission tests log in about 30 times a minute from dns.
+        postfix_auth_rate_limit: 60
+        # Short bans, so a test can let one expire (unbanip also deletes the
+        # history that longer repeat bans are computed from).
+        fail2ban_bantime: 30s
         fail2ban_ignoreip:
           - "{{ sovtest_ips.dns }}"
         # Basic auth in front of the webmail; password (test only) "sovtest-webmail-pass".

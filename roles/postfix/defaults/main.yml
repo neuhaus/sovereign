@@ -44,3 +44,8 @@ postfix_timer_jobs:
     command: /usr/local/sbin/sovereign-mailqueue
     on_calendar: "*:0/5"
     persistent: false
+
+# Logins (successful or not) per client address and minute on 465 and 587,
+# enforced by Postfix itself before fail2ban has read a log line. Generous
+# enough for an office behind one address.
+postfix_auth_rate_limit: 30

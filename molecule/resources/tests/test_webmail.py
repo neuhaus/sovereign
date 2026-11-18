@@ -390,23 +390,29 @@ def test_web_login_jails_active(host, jail):
     assert "Journal matches" in host.check_output("fail2ban-client status %s", jail)
 
 
+# People type passwords into the webmail and its basic auth: 3 failures.
+# CalDAV/CardDAV clients use stored passwords: 1 failure.
 @pytest.mark.parametrize(
-    "jail, attempt",
+    "jail, allowed, attempt",
     [
-        ("nginx-http-auth", lambda a, c, i: a("web-basic", c["ip"], c["web"], "/", "nobody%d" % i, "wrong-password")),
-        ("roundcube-auth", lambda a, c, i: a("web-login", c["ip"], c["web"], "nobody%d@%s" % (i, c["domain"]), "wrong-password")),
-        ("radicale", lambda a, c, i: a("dav", c["ip"], c["dav"], "PROPFIND", "/", "nobody%d@%s" % (i, c["domain"]), "wrong-password")),
+        ("nginx-http-auth", 3, lambda a, c, i: a("web-basic", c["ip"], c["web"], "/", "nobody%d" % i, "wrong-password")),
+        ("roundcube-auth", 3, lambda a, c, i: a("web-login", c["ip"], c["web"], "nobody%d@%s" % (i, c["domain"]), "wrong-password")),
+        ("radicale", 1, lambda a, c, i: a("dav", c["ip"], c["dav"], "PROPFIND", "/", "nobody%d@%s" % (i, c["domain"]), "wrong-password")),
     ],
 )
-def test_failed_web_logins_get_banned(host, attacker, sovtest_vars, ctx, jail, attempt):
+def test_failed_web_logins_get_banned(host, attacker, sovtest_vars, ctx, jail, allowed, attempt):
     attacker_ip = sovtest_vars["sovtest_ips"]["pebble"]
 
     def banned():
         return attacker_ip in host.check_output("fail2ban-client get %s banip", jail).split()
 
     try:
-        for i in range(5):
+        for i in range(allowed - 1):
             attempt(attacker, ctx, i)
+        if allowed > 1:
+            time.sleep(3)  # give fail2ban time to read the journal
+            assert not banned(), "banned before the %d. failure" % allowed
+        attempt(attacker, ctx, allowed)
         assert wait_for(banned), host.check_output("fail2ban-client status %s", jail)
     finally:
         host.run("fail2ban-client set %s unbanip %s", jail, attacker_ip)

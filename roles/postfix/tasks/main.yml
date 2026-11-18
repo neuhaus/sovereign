@@ -139,7 +139,8 @@
   loop: "{{ postfix_submission_params.results }}"
   loop_control:
     label: "{{ item.item.0.name }} {{ item.item.1.key }}"
-  when: item.stdout != item.item.1.value
+  # As strings: postconf prints "30", the variable may be the number 30.
+  when: item.stdout != (item.item.1.value | string)
   changed_when: true
   notify: Postfix configuration changed
 

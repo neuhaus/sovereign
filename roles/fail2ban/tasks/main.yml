@@ -43,6 +43,17 @@
     mode: "0644"
   notify: Fail2ban configuration changed
 
+# Debian's dovecot filter only knows Dovecot 2.3's wording; without this,
+# the dovecot jail never sees a failed login from Dovecot 2.4.
+- name: Extend the dovecot filter for Dovecot 2.4
+  ansible.builtin.copy:
+    src: dovecot.local
+    dest: /etc/fail2ban/filter.d/dovecot.local
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Fail2ban configuration changed
+
 - name: Install the Radicale filter
   ansible.builtin.copy:
     src: radicale.conf

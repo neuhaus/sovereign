@@ -1,30 +1,44 @@
 ---
-# Ban settings applied to every jail.
-fail2ban_bantime: 1h
+# Ban settings for every jail. Mail, calendar and SSH clients use stored
+# (app) passwords or keys, so a single failure is enough for a ban; only the
+# webmail jails, where people type passwords, allow a few typos (below).
+fail2ban_maxretry: 1
 fail2ban_findtime: 10m
-fail2ban_maxretry: 5
+# The first ban lasts fail2ban_bantime; every further ban of the same
+# address, in any jail, doubles it, up to fail2ban_bantime_max. A device left
+# with an old password after a password change locks its network out for at
+# most that long.
+fail2ban_bantime: 10m
+fail2ban_bantime_max: 1d
 
 # Addresses that are never banned, in addition to loopback.
 fail2ban_ignoreip: []
 
 # Enabled jails and their per-jail settings. All jails read from journald
-# (backend = systemd). Later roles add their services here (postfix, dovecot).
+# (backend = systemd).
 fail2ban_jails:
   sshd:
     # sshd >= 9.8 logs authentication failures from the sshd-session process,
     # which runs inside ssh.service.
     journalmatch: _SYSTEMD_UNIT=ssh.service + _COMM=sshd + _COMM=sshd-session
-  # SMTP: rejected senders/recipients, SASL authentication failures and
-  # protocol abuse (aggressive mode covers all of them).
+  # SMTP AUTH failures (submission); jail.conf defines the filter and ports.
+  postfix-sasl: {}
+  # Other SMTP rejections (unknown recipients, refused senders). Other mail
+  # servers cause them too, e.g. when a sender mistypes an address, so they
+  # are not banned at the first one.
   postfix:
-    mode: aggressive
+    mode: more
+    maxretry: 5
   # IMAP and ManageSieve authentication failures.
   dovecot: {}
-  # Basic auth in front of the webmail.
-  nginx-http-auth: {}
+  # Basic auth in front of the webmail: typed by people.
+  nginx-http-auth:
+    maxretry: 3
   # Web logins reach Dovecot from loopback, which the dovecot jail cannot ban;
   # these jails read the client address from Roundcube's and Radicale's logs.
+  # Roundcube's login is typed by people, Radicale's comes from clients.
   roundcube-auth:
     port: http,https
+    maxretry: 3
   radicale:
     port: http,https

@@ -1,0 +1,6 @@
+[Definition]
+# Dovecot 2.4 logs failed logins as "Login aborted: <reason> (auth failed,
+# N attempts in M secs) (auth_failed): user=<...>, method=..., rip=...".
+# Debian's filter (fail2ban 1.1.0) only knows the 2.3 wording.
+failregex = %(known/failregex)s
+            ^Login aborted%(_bypass_reject_reason)s \((?:auth failed, \d+ attempts(?: in \d+ secs)?|tried to use (?:disabled|disallowed) \S+ auth|proxy dest auth failed)\) \(\w+\):(?: user=<<F-USER>[^>]*</F-USER>>,)?(?: method=\S+,)? rip=<HOST>

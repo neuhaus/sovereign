@@ -5,6 +5,9 @@ backend = systemd
 banaction = nftables
 banaction_allports = nftables[type=allports]
 bantime = {{ fail2ban_bantime }}
+bantime.increment = true
+bantime.overalljails = true
+bantime.maxtime = {{ fail2ban_bantime_max }}
 findtime = {{ fail2ban_findtime }}
 maxretry = {{ fail2ban_maxretry }}
 ignoreip = {{ (['127.0.0.1/8', '::1'] + fail2ban_ignoreip) | join(' ') }}

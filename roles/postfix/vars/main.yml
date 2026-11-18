@@ -11,6 +11,7 @@ postfix_submission_options:
   smtpd_relay_restrictions: permit_sasl_authenticated,reject
   smtpd_recipient_restrictions: reject_non_fqdn_recipient
   milter_macro_daemon_name: ORIGINATING
+  smtpd_client_auth_rate_limit: "{{ postfix_auth_rate_limit }}"
 
 # Submission over implicit TLS (465, RFC 8314), preferred by the client
 # configuration files: the same rules, but TLS starts with the connection.

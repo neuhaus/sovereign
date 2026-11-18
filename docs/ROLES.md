@@ -44,7 +44,9 @@ Only Sovereign's own table is replaced on reload, not the whole ruleset, because
 
 Reads from journald, because Debian 13 has no syslog files to tail. Bans go into nftables. The sshd filter also counts OpenSSH's own penalty drops: since OpenSSH 10.1, sshd throttles a source itself and logs something else than a failed login.
 
-Web logins reach Dovecot from loopback, where the dovecot jail cannot ban anyone. So basic auth, Roundcube and Radicale have jails of their own, which read the real client address from those services' logs. The Radicale filter trusts `X-Forwarded-For` because nginx always overwrites that header. fail2ban's journal backend prefixes each line with `host unit[pid]:`, which filters must allow for.
+Web logins reach Dovecot from loopback, where the dovecot jail cannot ban anyone. So basic auth, Roundcube and Radicale have jails of their own, which read the real client address from those services' logs. The Radicale filter trusts `X-Forwarded-For` because nginx always overwrites that header. fail2ban's journal backend prefixes each line with `host unit[pid]:`, which filters must allow for. Debian's dovecot filter only knows Dovecot 2.3's wording for failed logins; `dovecot.local` adds 2.4's ("Login aborted: … (auth failed …)"), without which the dovecot jail never saw a failure.
+
+**One failure is enough** where clients use stored passwords or keys: IMAP and ManageSieve, SMTP AUTH (`postfix-sasl`), CalDAV/CardDAV and SSH. The webmail and its basic auth, where people type passwords, allow three; other SMTP rejections, which other mail servers cause too (a mistyped address), five. The first ban lasts 10 minutes, every further ban of the same address in any jail doubles it, up to a day (`fail2ban_bantime`, `fail2ban_bantime_max`). The price: after a password change, every device still using the old one gets its network banned, for longer with every retry, and one device behind a shared address (an office, mobile carrier NAT) locks out everyone behind it. The cap of a day bounds that.
 
 ## nginx
 

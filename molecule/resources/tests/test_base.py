@@ -4,6 +4,8 @@ import time
 
 import pytest
 
+from conftest import mail_client
+
 testinfra_hosts = ["mail"]
 
 
@@ -77,6 +79,63 @@ def test_fail2ban_bans_ssh_attacker_via_nftables(host, sovtest_vars, peer):
         assert attacker_ip in host.check_output("nft list ruleset")
     finally:
         host.run("fail2ban-client set sshd unbanip %s", attacker_ip)
+
+
+def ban_seconds(host, jail, ip):
+    """Duration of the current ban of ip in jail, None if not banned."""
+    for line in host.check_output("fail2ban-client get %s banip --with-time", jail).splitlines():
+        if line.split() and line.split()[0] == ip:
+            return int(line.split("+", 1)[1].split("=", 1)[0])
+    return None
+
+
+def wait_for_ban(host, jail, ip, seconds=30):
+    for _ in range(seconds):
+        duration = ban_seconds(host, jail, ip)
+        if duration:
+            return duration
+        time.sleep(1)
+    return None
+
+
+# Mail clients use stored passwords: one wrong password is enough for a ban.
+@pytest.mark.parametrize(
+    "jail, attempt",
+    [
+        ("dovecot", lambda c, ip, d: c("imap-login", ip, "993", "alice@" + d, "wrong-password")),
+        ("postfix-sasl", lambda c, ip, d: c("smtp-auth", ip, "alice@" + d, "wrong-password", "587")),
+    ],
+)
+def test_single_failed_login_bans(host, peer, sovtest_vars, jail, attempt):
+    attacker_ip = sovtest_vars["sovtest_ips"]["pebble"]
+    attacker = mail_client(peer("pebble"))
+    try:
+        attempt(attacker, sovtest_vars["sovtest_ips"]["mail"], sovtest_vars["sovtest_domain"])
+        assert wait_for_ban(host, jail, attacker_ip), host.check_output("fail2ban-client status %s", jail)
+    finally:
+        host.run("fail2ban-client set %s unbanip %s", jail, attacker_ip)
+
+
+def test_repeated_bans_get_longer(host, peer, sovtest_vars):
+    attacker_ip = sovtest_vars["sovtest_ips"]["pebble"]
+    attacker = mail_client(peer("pebble"))
+    mail, domain = sovtest_vars["sovtest_ips"]["mail"], sovtest_vars["sovtest_domain"]
+    durations = []
+    try:
+        # "unbanip" would also delete the ban from fail2ban's history, which
+        # the increment is computed from: let the first ban expire by itself
+        # (Molecule bans for 30 s, or longer if earlier tests left history).
+        attacker("imap-login", mail, "993", "alice@" + domain, "wrong-password")
+        durations.append(wait_for_ban(host, "dovecot", attacker_ip))
+        deadline = time.time() + (durations[0] or 0) + 30
+        while ban_seconds(host, "dovecot", attacker_ip) is not None and time.time() < deadline:
+            time.sleep(2)
+        attacker("imap-login", mail, "993", "alice@" + domain, "wrong-password")
+        durations.append(wait_for_ban(host, "dovecot", attacker_ip))
+    finally:
+        host.run("fail2ban-client set dovecot unbanip %s", attacker_ip)
+    assert None not in durations and durations[1] == 2 * durations[0], durations
+    assert durations[1] <= 86400
 
 
 # unattended-upgrades

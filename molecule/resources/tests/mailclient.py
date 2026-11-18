@@ -94,6 +94,35 @@ def cmd_submit(host, user, password, frm, to, subject, kind="plain", port="587")
         s.quit()
 
 
+def cmd_smtp_auth(host, user, password, port="587"):
+    """Only log in on 587 or 465, then quit: tests limits without sending mail.
+
+    PLAIN only: smtplib's login() would try LOGIN after a failed PLAIN, a second
+    failure on the same connection. A ban during the session (the connection
+    stops answering) is reported, not raised."""
+    try:
+        if port == "465":
+            s = smtplib.SMTP_SSL(host, 465, timeout=15, context=ctx())
+        else:
+            s = smtplib.SMTP(host, 587, timeout=15)
+            s.starttls(context=ctx())
+        s.ehlo()
+    except (OSError, smtplib.SMTPException) as exc:
+        out(ok=False, error="connect: %s" % exc)
+        return
+    try:
+        s.user, s.password = user, password  # what auth_plain reads
+        s.auth("PLAIN", s.auth_plain)
+        out(ok=True)
+    except (OSError, smtplib.SMTPException) as exc:
+        out(ok=False, error=str(exc))
+    finally:
+        try:
+            s.quit()
+        except (OSError, smtplib.SMTPException):
+            pass
+
+
 def cmd_smtp(host, frm, to, subject, kind="plain"):
     s = smtplib.SMTP(host, 25, timeout=15)
     s.ehlo("sender.sovtest")
@@ -497,6 +526,7 @@ def cmd_sink(port, outfile, certfile=None, keyfile=None):
 COMMANDS = {
     "submission-plain": cmd_submission_plain,
     "submit": cmd_submit,
+    "smtp-auth": cmd_smtp_auth,
     "smtp": cmd_smtp,
     "imap-count": cmd_imap_count,
     "imap-login": cmd_imap_login,
