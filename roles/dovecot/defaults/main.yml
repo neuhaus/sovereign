@@ -55,6 +55,13 @@ dovecot_postfix_spool: /var/spool/postfix
 # Prometheus/OpenMetrics endpoint of Dovecot's stats service. The firewall
 # opens it for `monitoring_sources` only.
 dovecot_metrics_port: 9900
+# Where it listens. Without monitoring_sources nobody outside needs it, so
+# only on loopback; with them on all addresses, because the port belongs to
+# the Dovecot unit, which serves IMAP to everyone, so systemd can't filter it
+# by address the way it does for the node exporter. If the monitoring host
+# comes over a private network or VPN, set its local address here: a second
+# layer next to the firewall.
+dovecot_metrics_listen: "{{ '* ::' if (monitoring_sources | default([])) | length > 0 else '127.0.0.1' }}"
 
 # ManageSieve (filter rules, port 4190) only on loopback, for Roundcube's
 # filter settings. Set managesieve_external: true in the inventory for

@@ -256,6 +256,7 @@ service auth {
 service stats {
   inet_listener http {
     port = {{ dovecot_metrics_port }}
+    listen = {{ dovecot_metrics_listen }}
   }
 }
 

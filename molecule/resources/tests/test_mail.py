@@ -1,11 +1,12 @@
 """Phase 0 smoke tests for the system under test."""
 
 import json
+import pathlib
 import time
 
 import pytest
 
-from conftest import mail_client
+from conftest import mail_client, run_playbook
 
 testinfra_hosts = ["mail"]
 
@@ -203,3 +204,26 @@ def test_dovecot_login_processes_stay_chrooted(host):
     for pid in pids:
         assert host.check_output("ps -o user= -p %s", pid) == "dovenull"
         assert host.check_output("readlink /proc/%s/root", pid).endswith("/run/dovecot/login")
+
+
+def metrics_listen(config):
+    block = config.split("service stats {", 1)[1].split("\n}", 1)[0]
+    return [line.split("=", 1)[1].strip() for line in block.splitlines() if line.strip().startswith("listen =")]
+
+
+def test_dovecot_metrics_on_all_addresses_with_monitoring(host):
+    # Molecule has a monitoring host (dns); the firewall limits it to that one.
+    assert host.check_output("doveconf -h service/stats/inet_listener/http/listen") == "* ::"
+
+
+@pytest.mark.parametrize(
+    "variables, expected",
+    [({"monitoring_sources": []}, "127.0.0.1"), ({"dovecot_metrics_listen": "10.20.30.40"}, "10.20.30.40")],
+)
+def test_dovecot_metrics_listen_address(host, variables, expected):
+    # Without monitoring nobody outside needs the port: loopback only.
+    run_playbook(host, pathlib.Path(__file__).parent / "render_dovecot_conf.yml", variables)
+    try:
+        assert metrics_listen(host.check_output("cat /var/tmp/sovtest-dovecot.conf")) == [expected]
+    finally:
+        host.run("rm -f /var/tmp/sovtest-dovecot.conf")

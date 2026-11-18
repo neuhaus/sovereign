@@ -1,0 +1,18 @@
+---
+# Run by test_mail.py: render the Dovecot configuration with other variables
+# into a file, without touching the running one.
+- name: Render dovecot.conf
+  hosts: mailservers
+  gather_facts: false
+  tasks:
+    - name: Load the role's defaults
+      ansible.builtin.include_vars:
+        file: "{{ playbook_dir }}/../../../roles/dovecot/defaults/main.yml"
+
+    - name: Render the configuration
+      ansible.builtin.template:
+        src: "{{ playbook_dir }}/../../../roles/dovecot/templates/dovecot.conf.j2"
+        dest: /var/tmp/sovtest-dovecot.conf
+        owner: root
+        group: root
+        mode: "0600"
