@@ -83,9 +83,10 @@ def test_certificate_verified_on_webmail(host, ctx):
 )
 def test_hsts_header(host, ctx, site, auth, path):
     vhost = ctx[site]
+    # An empty argument would reach curl as '' and be rejected.
+    login = ("-u " + WEBMAIL_AUTH + " ") if auth else ""
     headers = host.check_output(
-        "curl -sS -o /dev/null -D - %s --resolve %s:443:127.0.0.1 https://%s%s",
-        "-u " + WEBMAIL_AUTH if auth else "",
+        "curl -sS -o /dev/null -D - " + login + "--resolve %s:443:127.0.0.1 https://%s%s",
         vhost,
         vhost,
         path,
