@@ -1,7 +1,22 @@
 # {{ ansible_managed }}
-# Webmail (Roundcube). Nothing is reachable without basic auth. Behind it only
-# the front controller runs and only static assets of the listed types are
-# served; everything else in the tree stays out of reach.
+# Webmail (Roundcube). Nothing is reachable without basic auth, except the
+# endpoint for CSP violation reports. Behind it only the front controller runs
+# and only static assets of the listed types are served; everything else in
+# the tree stays out of reach.
+
+# CSP violation reports: logged to the journal with their body. nginx only
+# reads a request body when it passes the request on, hence the small
+# internal server that answers them.
+log_format sovereign_csp escape=json '$remote_addr $request_body';
+limit_req_zone $binary_remote_addr zone=sovereign_csp:1m rate=30r/m;
+server {
+    listen 127.0.0.1:{{ roundcube_csp_sink_port }};
+    access_log off;
+    location / {
+        return 204;
+    }
+}
+
 server {
     listen 443 ssl;
     listen [::]:443 ssl;
@@ -16,6 +31,10 @@ server {
     error_log syslog:server=unix:/dev/log,tag=nginx error;
     add_header X-Content-Type-Options nosniff always;
     add_header Referrer-Policy same-origin always;
+    add_header {{ 'Content-Security-Policy' if roundcube_csp_enforce else 'Content-Security-Policy-Report-Only' }} "{{ roundcube_csp }}" always;
+    add_header Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=(), usb=(), interest-cohort=()" always;
+    add_header Cross-Origin-Opener-Policy same-origin always;
+    add_header Cross-Origin-Resource-Policy same-origin always;
 
     location = / {
         rewrite ^ /index.php last;
@@ -30,6 +49,19 @@ server {
     }
     location ~ ^/(?:plugins|skins|program)/.+\.(?:js|css|png|gif|jpe?g|svg|ico|woff2?|ttf|eot|map|html)$ {
         expires 7d;
+    }
+    # Browsers don't reliably send credentials with reports, so this one
+    # path is open: POST only, small, rate-limited, and only logged.
+    location = /csp-report {
+        auth_basic off;
+        limit_except POST {
+            deny all;
+        }
+        limit_req zone=sovereign_csp burst=20 nodelay;
+        client_max_body_size 16k;
+        client_body_in_single_buffer on;
+        access_log syslog:server=unix:/dev/log,tag=nginx_csp,nohostname sovereign_csp;
+        proxy_pass http://127.0.0.1:{{ roundcube_csp_sink_port }}/;
     }
     # Not "return 404": that runs before the access phase and so without basic auth.
     location / {

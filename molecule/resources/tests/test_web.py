@@ -105,6 +105,31 @@ def test_apple_profile_not_signed_again_without_changes(host):
     assert host.check_output("/usr/local/sbin/sovereign-sign-mobileconfig") == ""
 
 
+STATIC_CSP = "default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'"
+
+
+def headers(host, name, path, *options):
+    raw = https(host, name, path, "-o /dev/null", "-D -", *options)
+    result = {}
+    for line in raw.splitlines()[1:]:
+        if ":" in line:
+            key, value = line.split(":", 1)
+            result.setdefault(key.strip().lower(), []).append(value.strip())
+    return result
+
+
+@pytest.mark.parametrize(
+    "prefix, path",
+    [("mta-sts", "/.well-known/mta-sts.txt"), ("autoconfig", "/mail/config-v1.1.xml"), ("autoconfig", "/mail.mobileconfig")],
+)
+def test_static_sites_send_strict_headers(host, domain, prefix, path):
+    sent = headers(host, prefix + "." + domain, path)
+    assert sent.get("content-security-policy") == [STATIC_CSP], sent
+    assert sent.get("x-content-type-options") == ["nosniff"], sent
+    assert sent.get("referrer-policy") == ["no-referrer"], sent
+    assert sent.get("strict-transport-security") == ["max-age=63072000"], sent
+
+
 def test_unknown_paths_return_404(host, domain):
     code = host.check_output(
         "curl -s -o /dev/null -w '%%{http_code}' --resolve mta-sts.%s:443:127.0.0.1 https://mta-sts.%s/other",

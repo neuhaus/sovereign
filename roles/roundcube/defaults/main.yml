@@ -43,6 +43,22 @@ roundcube_php_memory_limit: 256M
 
 # Workers only exist while requests come in, which suits a small server.
 roundcube_php_max_children: 5
+
+# Content-Security-Policy for the webmail. Roundcube needs inline scripts and
+# styles, so a nonce-based policy is not possible; this one still forbids
+# plugins, foreign forms, framing by other sites and connections elsewhere.
+# img-src allows https: so that Roundcube's "show remote images" keeps
+# working. Until roundcube_csp_enforce is true it is only reported
+# (Content-Security-Policy-Report-Only): violations go to the journal
+# (journalctl -t nginx_csp) and nothing breaks.
+roundcube_csp: >-
+  default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline';
+  img-src 'self' data: blob: https:; font-src 'self' data:; connect-src 'self';
+  frame-src 'self'; frame-ancestors 'self'; object-src 'none'; base-uri 'self';
+  form-action 'self'; report-uri /csp-report
+roundcube_csp_enforce: false
+# Loopback port of the internal server that answers the CSP reports.
+roundcube_csp_sink_port: 8471
 # PHP-FPM socket for the Roundcube pool. /run/php is handed to root by the
 # sandbox drop-in (RuntimeDirectory=php), so the master needs no
 # CAP_DAC_OVERRIDE for it and its PID file there.

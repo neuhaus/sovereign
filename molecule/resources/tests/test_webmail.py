@@ -95,6 +95,81 @@ def test_hsts_header(host, ctx, site, auth, path):
     assert hsts == ["max-age=63072000"], headers
 
 
+def webmail_headers(host, ctx, extra=""):
+    raw = host.check_output(
+        "curl -sS -o /dev/null -D - -u %s " + extra + " --resolve %s:443:127.0.0.1 https://%s/", WEBMAIL_AUTH, ctx["web"], ctx["web"]
+    )
+    sent = {}
+    for line in raw.splitlines()[1:]:
+        if ":" in line:
+            key, value = line.split(":", 1)
+            sent.setdefault(key.strip().lower(), []).append(value.strip())
+    return sent
+
+
+def test_webmail_csp_reported_not_enforced(host, ctx):
+    # Report-only until roundcube_csp_enforce: violations are logged, nothing breaks.
+    sent = webmail_headers(host, ctx)
+    assert "content-security-policy" not in sent, sent
+    [policy] = sent["content-security-policy-report-only"]
+    assert policy.startswith("default-src 'self';"), policy
+    for directive in ("object-src 'none'", "frame-ancestors 'self'", "img-src 'self' data: blob: https:", "report-uri /csp-report"):
+        assert directive in policy, policy
+
+
+@pytest.mark.parametrize(
+    "header, value",
+    [
+        ("cross-origin-opener-policy", "same-origin"),
+        ("cross-origin-resource-policy", "same-origin"),
+        ("x-content-type-options", "nosniff"),
+        ("referrer-policy", "same-origin"),
+    ],
+)
+def test_webmail_security_headers(host, ctx, header, value):
+    assert webmail_headers(host, ctx).get(header) == [value]
+
+
+def test_webmail_permissions_policy(host, ctx):
+    [policy] = webmail_headers(host, ctx)["permissions-policy"]
+    for feature in ("camera=()", "microphone=()", "geolocation=()"):
+        assert feature in policy, policy
+
+
+def test_csp_reports_are_logged_without_basic_auth(host, ctx):
+    marker = "sovtest-csp-%s" % uuid.uuid4().hex[:8]
+    report = json.dumps({"csp-report": {"document-uri": "https://%s/" % ctx["web"], "violated-directive": marker}})
+    code = host.check_output(
+        "curl -s -o /dev/null -w '%%{http_code}' -X POST -H 'Content-Type: application/csp-report' --data %s"
+        " --resolve %s:443:127.0.0.1 https://%s/csp-report",
+        report, ctx["web"], ctx["web"],
+    )
+    assert code == "204"
+    assert wait_for(lambda: marker in host.run("journalctl -t nginx_csp --since -2min --no-pager -o cat").stdout)
+
+
+def test_csp_report_endpoint_accepts_only_post(host, ctx):
+    code = host.check_output(
+        "curl -s -o /dev/null -w '%%{http_code}' --resolve %s:443:127.0.0.1 https://%s/csp-report", ctx["web"], ctx["web"]
+    )
+    assert code == "403"
+
+
+# No site may let other websites read its responses: a permissive or reflected
+# Access-Control-Allow-Origin would let any page read the webmail as the user.
+@pytest.mark.parametrize("site", ["web", "dav", "mta-sts", "autoconfig"])
+@pytest.mark.parametrize("method", ["GET", "OPTIONS"])
+def test_no_cors_headers(host, ctx, site, method):
+    name = ctx[site] if site in ctx else "%s.%s" % (site, ctx["domain"])
+    login = ("-u " + WEBMAIL_AUTH + " ") if site == "web" else ""
+    raw = host.check_output(
+        "curl -s -o /dev/null -D - -X %s -H 'Origin: https://evil.example' -H 'Access-Control-Request-Method: GET' "
+        + login + "--resolve %s:443:127.0.0.1 https://%s/",
+        method, name, name,
+    )
+    assert "access-control-allow" not in raw.lower(), raw
+
+
 @pytest.mark.parametrize("path", ["/", "/index.php", "/?_task=login", "/skins/elastic/styles/styles.min.css", "/no-such-file"])
 def test_nothing_reachable_without_basic_auth(client, ctx, path):
     result = client("web-basic", ctx["ip"], ctx["web"], path)

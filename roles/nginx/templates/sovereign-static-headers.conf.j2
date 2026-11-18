@@ -1,0 +1,8 @@
+# {{ ansible_managed }}
+# Headers for sites that serve only static text and XML (MTA-STS policy,
+# client autoconfiguration): nothing may run, embed or submit anything.
+# Include at server level, next to sovereign-tls.conf; add_header in a
+# location would drop these and HSTS.
+add_header Content-Security-Policy "default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'" always;
+add_header X-Content-Type-Options nosniff always;
+add_header Referrer-Policy no-referrer always;

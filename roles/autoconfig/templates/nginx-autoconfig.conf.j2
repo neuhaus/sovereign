@@ -18,6 +18,7 @@ server {
     server_name {{ (autoconfig_domains | map('regex_replace', '^', 'autoconfig.') | list
                     + autoconfig_domains | map('regex_replace', '^', 'autodiscover.') | list) | join(' ') }};
     include /etc/nginx/snippets/sovereign-tls.conf;
+    include /etc/nginx/snippets/sovereign-static-headers.conf;
     root {{ autoconfig_webroot }};
 
     location = /mail/config-v1.1.xml {
