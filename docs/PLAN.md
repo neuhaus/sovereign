@@ -339,6 +339,28 @@ To settle when this is built:
 
 **Tests:** a member can read, write and delete; a non-member can neither see nor open the folder, also after being removed from the list; flags behave as decided; the folder is in the restic backup and comes back in the disaster recovery test.
 
+### Optional authoritative DNS
+
+Today the mail domains' records live with the owner's DNS provider, and the values the server generates (DKIM keys, the TLSA hash, the MTA-STS policy id) are copied there by hand. An authoritative DNS server on the server would publish them itself: TLSA would follow the certificate, a key rotation could run in the right order on its own, and DNSSEC, which incoming DANE needs, would no longer depend on the provider offering it. Optional, and recommended only to owners who can handle a DS record at their registrar.
+
+**Decided so far:**
+
+- **Knot DNS** from Debian: signs zones itself, built-in response rate limiting, little memory. Not NSD (can't sign), not BIND (heavier).
+- **Hidden primary:** the server holds and signs the zone but is not listed as a nameserver. One or two secondaries at an outside provider serve it, updated by zone transfer and NOTIFY with TSIG. Registries require at least two nameservers (DENIC checks this), and a domain shouldn't depend on one machine (RFC 2182). Port 53 opens only to the secondaries.
+- **DNSSEC with one key the registry knows, never replaced automatically.** A lost key, or a rollover without a matching DS record at the registry, makes the domain unreachable for every validating resolver: all mail to it fails, not only DANE. The keys go into the restic backup (`restic_paths`), with a test that restores them.
+- **The zone comes from the inventory:** A/AAAA, MX, SPF, DMARC, DKIM (from Rspamd's keys), MTA-STS, TLS-RPT, TLSA (from the certificate), the autoconfig CNAMEs, SRV records for mail clients and CalDAV/CardDAV (RFC 6186, RFC 6764), plus the owner's other records as free entries, so moving a domain doesn't break its website. The DNS role runs before certbot (which needs the records); TLSA and DKIM are added after.
+- **Hardening as for every service** (CONTRIBUTING.md): sandbox with only `CAP_NET_BIND_SERVICE`, `/var/lib/knot` as the only writable path, an IP filter limited to the secondaries.
+
+**Depends on** the optional-role mechanism (`*_enabled`, decided, not built; see STATUS.md), including cleaning up when the role is turned off. This would be the first role that needs it.
+
+**To settle when this is built:** CDS/CDNSKEY for registries that take DS records automatically; how the owner's existing records are imported; what happens to the DANE check when the server publishes TLSA itself.
+
+**Tests:** the `dns` instance acts as the secondary: zone transfer, signing, record contents, TLSA updated after a new certificate, rate limiting, and a restore of the keys.
+
+**Documentation:** a migration guide (lower the TTLs at the old provider, nameservers and glue at the registrar, upload the DS record, verify) and what to do in a DNSSEC emergency.
+
+**Alternative with much less effort:** keep the external provider and publish the generated records through its API with RFC 2136 dynamic updates, which many providers support. Same main benefit, no DNSSEC keys to operate; but only standard RFC 2136 can be supported generically, not each provider's own API.
+
 ---
 
 ## Decisions
