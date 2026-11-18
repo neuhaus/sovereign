@@ -9,6 +9,18 @@
       ansible.builtin.include_vars:
         file: "{{ playbook_dir }}/../../../roles/dovecot/defaults/main.yml"
 
+    # The role registers the mail user when it creates it; the template
+    # needs its uid.
+    - name: Look up the mail user
+      ansible.builtin.getent:
+        database: passwd
+        key: "{{ dovecot_vmail_user }}"
+
+    - name: Set the mail user like the role does
+      ansible.builtin.set_fact:
+        dovecot_vmail_account:
+          uid: "{{ ansible_facts['getent_passwd'][dovecot_vmail_user][1] }}"
+
     - name: Render the configuration
       ansible.builtin.template:
         src: "{{ playbook_dir }}/../../../roles/dovecot/templates/dovecot.conf.j2"

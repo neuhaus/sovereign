@@ -138,6 +138,7 @@ def test_service_cannot_see_secrets(host, sovtest_vars, unit):
         checked.append(path)
     # The ones that matter most must exist here, or the test proves nothing.
     must = {"/var/vmail", "/var/lib/radicale"} | (set() if without_restic(sovtest_vars) else {"/etc/restic"})
+    must -= set(NEEDED.get(unit, []))
     assert must <= set(checked), checked
 
 
@@ -162,7 +163,6 @@ def test_mail_to_root_reaches_the_postmaster(host, sovtest_vars):
         raise AssertionError(host.check_output("journalctl -u postfix --since -2min --no-pager -o cat | tail -15"))
 
 
-def test_auth_workers_are_limited(host, peer, sovtest_vars):
 def test_system_users_are_no_mail_recipients(host, sovtest_vars):
     # The host name is local (for root's mail), but only /etc/aliases names
     # are recipients there: no mail into /var/mail for www-data and the like.
@@ -175,6 +175,7 @@ def test_system_users_are_no_mail_recipients(host, sovtest_vars):
     assert host.check_output("python3 -c %s root@%s", script, hostname) == "250"
 
 
+def test_auth_workers_are_limited(host, peer, sovtest_vars):
     # 30 wrong passwords at once from dns (which fail2ban ignores): never more
     # than dovecot_auth_worker_limit (4) password checks, 64 MiB each.
     assert "process_limit = 4" in host.check_output("doveconf -n service/auth-worker")
