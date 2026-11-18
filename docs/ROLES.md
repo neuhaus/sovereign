@@ -34,6 +34,8 @@ Root logins with a key stay as Debian sets them. The goal here is that no passwo
 
 A local DNSSEC-validating resolver, because Postfix needs validated answers for DANE, and because public resolvers often rate-limit or filter DNS blocklist queries.
 
+The package's AppArmor profile, in enforce mode, confines Unbound's file access; a systemd drop-in adds the rest: no new privileges, no writable executable memory, a system call filter, kernel and namespace protections, and of the eight capabilities the profile allows only four. Unbound starts as root to bind port 53 and create its control socket, which Debian's `remote-control.conf` (a conffile) puts directly into `/run`, and switches to the `unbound` user before it handles any DNS traffic. Starting it as `unbound` would need that socket elsewhere, or no `unbound-control`.
+
 `/etc/resolv.conf` carries `options trust-ad`, because otherwise glibc removes the AD flag that tells Postfix an answer was validated, and DANE silently stops working. The resolver must be running before the system points at it, or the rest of the playbook loses name resolution.
 
 Unbound always recurses by itself; there is no forwarder setting. A network that blocks outgoing DNS would need one (tests on such a network add it by hand).
