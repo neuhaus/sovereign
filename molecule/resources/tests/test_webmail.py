@@ -69,6 +69,31 @@ def test_certificate_verified_on_webmail(host, ctx):
     assert code == "200"
 
 
+# HSTS keeps browsers from sending credentials over plain HTTP after the first
+# visit. "always" puts it on 401s too; an add_header in a location block would
+# silently drop it there, hence a page, a static file and a refused request.
+@pytest.mark.parametrize(
+    "site,auth,path",
+    [
+        ("web", True, "/"),
+        ("web", True, "/skins/elastic/styles/styles.min.css"),
+        ("web", False, "/"),
+        ("dav", False, "/"),
+    ],
+)
+def test_hsts_header(host, ctx, site, auth, path):
+    vhost = ctx[site]
+    headers = host.check_output(
+        "curl -sS -o /dev/null -D - %s --resolve %s:443:127.0.0.1 https://%s%s",
+        "-u " + WEBMAIL_AUTH if auth else "",
+        vhost,
+        vhost,
+        path,
+    )
+    hsts = [line.split(":", 1)[1].strip() for line in headers.splitlines() if line.lower().startswith("strict-transport-security:")]
+    assert hsts == ["max-age=63072000"], headers
+
+
 @pytest.mark.parametrize("path", ["/", "/index.php", "/?_task=login", "/skins/elastic/styles/styles.min.css", "/no-such-file"])
 def test_nothing_reachable_without_basic_auth(client, ctx, path):
     result = client("web-basic", ctx["ip"], ctx["web"], path)
