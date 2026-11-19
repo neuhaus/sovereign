@@ -154,6 +154,11 @@ provisioner:
         # bannable for the fail2ban test.
         # The submission tests log in about 30 times a minute from dns.
         postfix_auth_rate_limit: 60
+        # incus installs its VM agent into /usr outside any package.
+        integrity_usr_expected_extra:
+          - /usr/lib/systemd/incus-agent-setup
+          - /usr/lib/systemd/system/incus-agent.service
+          - /usr/lib/udev/rules.d/99-incus-agent.rules
         # Short bans, so a test can let one expire (unbanip also deletes the
         # history that longer repeat bans are computed from).
         fail2ban_bantime: 30s

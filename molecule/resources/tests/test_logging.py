@@ -14,6 +14,8 @@ NOT_ROTATED = {
     "/var/log/README": "systemd's pointer to journalctl",
     "/var/log/bootstrap.log": "written once when the image was built",
         "/var/log/lastlog": "fixed-size login index, not a log",
+    "/var/log/aide/aideinit.log": "written once, when AIDE's database is created",
+    "/var/log/aide/aideinit.errors": "written once, when AIDE's database is created",
 }
 
 

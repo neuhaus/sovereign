@@ -71,4 +71,7 @@
       aide --update --config /etc/aide/aide.conf >/dev/null;
       rc=$?; [ "$rc" -lt 8 ] && mv /var/lib/aide/aide.db.new /var/lib/aide/aide.db
   when: integrity_aide_db.stat.exists and integrity_aide_check.rc in range(1, 8)
-  changed_when: true
+  # Bookkeeping, not a change to the server: what changed is listed above.
+  # Reported as a change, any edit outside the playbook would make every
+  # following run look changed until this ran once.
+  changed_when: false
