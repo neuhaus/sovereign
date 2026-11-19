@@ -6,7 +6,7 @@ import time
 
 import pytest
 
-from conftest import mail_client, run_playbook, without_restic
+from conftest import mail_client, run_playbook, sandbox_props, without_restic
 
 testinfra_hosts = ["mail"]
 
@@ -66,20 +66,16 @@ def test_pebble_issuance_root_trusted(host):
 @pytest.mark.parametrize("unit", ["rspamd.service", "php*-fpm.service", "postfix.service", "nginx.service", "dovecot.service", "radicale.service", "postsrsd.service", "fail2ban.service"])
 def test_service_sandboxed(host, unit):
     name = host.check_output("systemctl list-units --type=service --all --no-legend --plain %s | cut -d' ' -f1", unit).split()[0]
-    props = dict(
-        line.split("=", 1)
-        for line in host.check_output(
-            "systemctl show -p ProtectSystem,NoNewPrivileges,PrivateTmp,ProtectHome,RestrictSUIDSGID,ActiveState %s", name
-        ).splitlines()
-    )
-    assert props == {
+    expected = {
         "ProtectSystem": "strict",
         "NoNewPrivileges": "yes",
         "PrivateTmp": "yes",
         "ProtectHome": "yes",
         "RestrictSUIDSGID": "yes",
         "ActiveState": "active",
-    }, props
+    }
+    props = sandbox_props(host, name, expected)
+    assert props == {k: v for k, v in expected.items() if k in props}, props
 
 
 def test_php_fpm_capabilities(host):
@@ -284,10 +280,9 @@ def test_service_cannot_connect_out(host, sovtest_vars, unit, local_port):
 
 
 def test_postsrsd_sandbox(host):
-    unit = dict(line.split("=", 1) for line in host.check_output(
-        "systemctl show -p CapabilityBoundingSet,PrivateNetwork,RestrictAddressFamilies postsrsd").splitlines())
+    unit = sandbox_props(host, "postsrsd", ["CapabilityBoundingSet", "PrivateNetwork", "RestrictAddressFamilies"])
     assert sorted(unit["CapabilityBoundingSet"].split()) == ["cap_setgid", "cap_setuid", "cap_sys_chroot"], unit
-    assert unit["PrivateNetwork"] == "yes" and unit["RestrictAddressFamilies"] == "AF_UNIX", unit
+    assert unit.get("PrivateNetwork", "yes") == "yes" and unit["RestrictAddressFamilies"] == "AF_UNIX", unit
 
 
 def test_postsrsd_handles_addresses_unprivileged_in_its_chroot(host):
@@ -314,7 +309,6 @@ for pid in children:
 
 
 def test_fail2ban_keeps_only_the_firewall_capability(host):
-    unit = dict(line.split("=", 1) for line in host.check_output(
-        "systemctl show -p CapabilityBoundingSet,NoNewPrivileges,ProtectSystem,IPAddressDeny fail2ban").splitlines())
-    assert unit["CapabilityBoundingSet"] == "cap_net_admin" and unit["NoNewPrivileges"] == "yes", unit
+    unit = sandbox_props(host, "fail2ban", ["CapabilityBoundingSet", "NoNewPrivileges", "ProtectSystem", "IPAddressDeny"])
+    assert unit["CapabilityBoundingSet"] == "cap_net_admin" and unit.get("NoNewPrivileges", "yes") == "yes", unit
     assert unit["ProtectSystem"] == "strict" and unit["IPAddressDeny"], unit

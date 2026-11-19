@@ -11,7 +11,7 @@ import time
 import pytest
 import yaml
 
-from conftest import skip_without_restic, without_restic
+from conftest import sandbox_props, skip_without_restic, without_restic
 
 testinfra_hosts = ["mail"]
 
@@ -96,14 +96,12 @@ def test_certificate_expiry_metric(host, ansible_var):
 
 
 def test_node_exporter_sandboxed(host, sovtest_vars):
-    props = dict(
-        line.split("=", 1)
-        for line in host.check_output(
-            "systemctl show -p NoNewPrivileges,ProtectSystem,CapabilityBoundingSet,IPAddressDeny,IPAddressAllow,ActiveState"
-            " prometheus-node-exporter"
-        ).splitlines()
+    props = sandbox_props(
+        host,
+        "prometheus-node-exporter",
+        ["NoNewPrivileges", "ProtectSystem", "CapabilityBoundingSet", "IPAddressDeny", "IPAddressAllow", "ActiveState"],
     )
-    assert props["NoNewPrivileges"] == "yes" and props["ProtectSystem"] == "strict", props
+    assert props.get("NoNewPrivileges", "yes") == "yes" and props["ProtectSystem"] == "strict", props
     assert props["CapabilityBoundingSet"] == "" and props["ActiveState"] == "active", props
     assert set(props["IPAddressDeny"].split()) == {"0.0.0.0/0", "::/0"}, props
     allowed = props["IPAddressAllow"].split()

@@ -223,9 +223,16 @@ def test_submissions_rejects_foreign_sender(client, ctx):
 def test_submission_limits_logins_per_minute(host, peer, ctx, port):
     # Correct passwords, so it is Postfix's limit that stops them, not fail2ban.
     limit = int(host.check_output("postconf -Ph submission/inet/smtpd_client_auth_rate_limit"))
-    attacker = mail_client(peer("pebble"))
+    pebble = peer("pebble")
+    mail_client(pebble)
     # Logins only: sending would count against Rspamd's per-user rate limit.
-    results = [attacker("smtp-auth", ctx["mail_ip"], ctx["alice"], ALICE, port) for _ in range(limit + 1)]
+    # Looped on pebble itself: one remote command per login took over a
+    # minute on slow CI runners, longer than Postfix counts.
+    out = pebble.check_output(
+        "for i in $(seq %s); do python3 /tmp/mailclient.py smtp-auth %s %s %s %s; done",
+        str(limit + 1), ctx["mail_ip"], ctx["alice"], ALICE, port,
+    )
+    results = [json.loads(line) for line in out.splitlines()]
     refused = [r for r in results if not r["ok"]]
     assert refused and all("4.7" in r["error"] or "450" in r["error"] for r in refused), refused[:3]
     assert all(r["ok"] for r in results[: limit // 2]), results[: limit // 2]

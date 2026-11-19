@@ -38,6 +38,26 @@ def sovtest_vars(host):
     return host.ansible.get_variables()
 
 
+# In a container, incus generates /run/systemd/system/service.d/
+# zzz-lxc-service.conf, which overrides these for every service; on a VM or
+# a real server our drop-ins apply. Sandbox tests leave them out there.
+CONTAINER_OVERRIDES = {
+    "NoNewPrivileges", "PrivateNetwork", "ProtectProc", "ProcSubset", "ProtectControlGroups", "ProtectKernelTunables",
+}
+
+
+def in_container(host):
+    return host.run("systemd-detect-virt --container --quiet").rc == 0
+
+
+def sandbox_props(host, unit, names):
+    """systemctl show values of a unit, without those a container overrides."""
+    shown = dict(line.split("=", 1) for line in host.check_output("systemctl show -p %s %s", ",".join(names), unit).splitlines())
+    if in_container(host):
+        shown = {k: v for k, v in shown.items() if k not in CONTAINER_OVERRIDES}
+    return shown
+
+
 def without_restic(sovtest_vars):
     """Whether the scenario leaves out the restic role (sovtest_without_restic).
 

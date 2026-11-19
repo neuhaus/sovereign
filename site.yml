@@ -16,7 +16,6 @@
     - role: timesyncd
     - role: unbound
     - role: nftables
-    - role: fail2ban
     - role: nginx
     - role: certbot
     - role: maildb
@@ -30,6 +29,10 @@
     # Tagged so a test scenario can leave it out (no restic package in Testing).
     - role: restic
       tags: [restic]
+    # After every role that creates a path its sandbox hides (/etc/restic,
+    # /etc/letsencrypt...): a path missing at start stays visible to the
+    # service until it is restarted.
+    - role: fail2ban
     - role: unattended_upgrades
     - role: systemd_timers
     - role: node_exporter

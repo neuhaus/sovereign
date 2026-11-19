@@ -5,13 +5,11 @@ import pathlib
 import pytest
 import yaml
 
+from conftest import in_container
+
 testinfra_hosts = ["mail"]
 
 DEFAULTS = yaml.safe_load((pathlib.Path(__file__).parents[3] / "roles/kernel/defaults/main.yml").read_text())
-
-
-def in_container(host):
-    return host.run("systemd-detect-virt --container --quiet").rc == 0
 
 
 def test_kernel_settings_in_effect(host):
@@ -25,6 +23,8 @@ def test_kernel_settings_in_effect(host):
 
 @pytest.mark.parametrize("module", DEFAULTS["kernel_blocked_modules"])
 def test_module_cannot_be_loaded(host, module):
+    if in_container(host):
+        pytest.skip("a container uses the host's kernel modules")
     # modprobe -n shows what it would do: run /bin/false instead of loading.
     assert "/bin/false" in host.check_output("modprobe --dry-run --verbose %s 2>&1 || true", module)
 
