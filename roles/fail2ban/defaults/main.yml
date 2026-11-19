@@ -52,6 +52,7 @@ fail2ban_inaccessible_paths:
   - /etc/dovecot
   - /etc/restic
   - /etc/postsrsd.secret
+  - /etc/nginx
   - /etc/roundcube
   - /etc/radicale
   - /etc/rspamd

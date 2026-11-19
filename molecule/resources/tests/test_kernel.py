@@ -18,7 +18,8 @@ def test_kernel_settings_in_effect(host):
     if in_container(host):
         pytest.skip("a container shares the host's kernel settings")
     keys = list(DEFAULTS["kernel_sysctl"])
-    actual = dict(zip(keys, host.check_output("sysctl -n %s", " ".join(keys)).splitlines()))
+    # One argument per key (testinfra would quote a joined string as one).
+    actual = dict(zip(keys, host.check_output("sysctl -n " + " ".join(keys)).splitlines()))
     assert actual == {key: str(value) for key, value in DEFAULTS["kernel_sysctl"].items()}
 
 

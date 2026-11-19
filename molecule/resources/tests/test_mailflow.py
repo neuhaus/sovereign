@@ -421,8 +421,12 @@ def test_moving_to_junk_trains_spam(host, client, ctx):
 def test_service_uses_its_own_file_and_debians_stays_untouched(host, unit, package, ours):
     # Debian's conffiles stay as shipped: an edited one makes dpkg ask on an
     # update that changes it. The service runs with Sovereign's file.
-    pid = host.check_output("systemctl show -p MainPID --value %s", unit)
-    assert ours in host.check_output("tr '\\0' ' ' < /proc/%s/cmdline", pid)
+    if unit == "redis-server":
+        # Redis rewrites its process title; it reports its file itself.
+        started_with = host.check_output("redis-cli -s /run/redis/redis-server.sock info server | grep ^config_file:")
+    else:
+        started_with = host.check_output("tr '\\0' ' ' < /proc/%s/cmdline", host.check_output("systemctl show -p MainPID --value %s", unit))
+    assert ours in started_with
     assert host.run("dpkg --verify %s", package).stdout == ""
 
 

@@ -146,7 +146,8 @@ def test_pending_reboot_mails_the_postmaster_once(host, sovtest_vars):
     kernel = "sovtest-%d" % int(time.time())
     status = "NEEDRESTART-KSTA: 3\nNEEDRESTART-KCUR: 1.0-old\nNEEDRESTART-KEXP: %s\n" % kernel
     check = "SOVEREIGN_REBOOT_STATUS=\"$(printf %%b %s)\" /usr/local/sbin/sovereign-reboot-pending"
-    since = r"^sovereign_reboot_pending_since_timestamp_seconds (\d+)$"
+    # node_exporter writes large values in exponent notation (1.795e+09).
+    since = r"^sovereign_reboot_pending_since_timestamp_seconds (\S+)$"
     alice = "alice@" + sovtest_vars["sovtest_domain"]
 
     def mails():
@@ -154,18 +155,18 @@ def test_pending_reboot_mails_the_postmaster_once(host, sovtest_vars):
 
     try:
         host.check_output(check, status)
-        first = int(re.search(since, metrics(host), re.M).group(1))
+        first = float(re.search(since, metrics(host), re.M).group(1))
         assert first > 0
         for _ in range(30):
             if mails():
                 break
             time.sleep(2)
         host.check_output(check, status)
-        assert int(re.search(since, metrics(host), re.M).group(1)) == first
+        assert float(re.search(since, metrics(host), re.M).group(1)) == first
         time.sleep(5)
         assert len(mails()) == 1, mails()
         host.check_output(check, "NEEDRESTART-KSTA: 1")
-        assert int(re.search(since, metrics(host), re.M).group(1)) == 0
+        assert float(re.search(since, metrics(host), re.M).group(1)) == 0
     finally:
         host.run("rm -f /var/lib/sovereign/reboot-pending-since")
         host.run("systemctl start sovereign-reboot-pending.service")

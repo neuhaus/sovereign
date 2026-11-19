@@ -1,4 +1,13 @@
 ---
+# Minimal systems without kmod (containers) have no /etc/modprobe.d.
+- name: Create the modprobe configuration directory
+  ansible.builtin.file:
+    path: /etc/modprobe.d
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
 - name: Block unneeded kernel modules
   ansible.builtin.template:
     src: modprobe.conf.j2
