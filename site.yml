@@ -33,3 +33,5 @@
     - role: unattended_upgrades
     - role: systemd_timers
     - role: node_exporter
+    # Last: its database takes this run's changes as the new state.
+    - role: integrity

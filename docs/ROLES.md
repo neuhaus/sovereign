@@ -209,3 +209,16 @@ Without the package's recommends, which add hardware collector timers that fail 
 Runs in a systemd sandbox (`prometheus-node-exporter.service.d/sovereign-hardening.conf`): no capabilities, no new privileges, no writable executable memory, a read-only system and a system call filter. Unlike the other sandboxes it hides no paths and replaces no mount points, because the exporter measures the file systems: with `/var` or `/home` replaced, it would report the free space of the replacement and the disk alerts would be wrong. A test compares the reported size of `/` with `df`.
 
 **A second network layer:** systemd itself drops every packet between the exporter and any address other than loopback and `monitoring_sources` (`IPAddressDeny=any`, `IPAddressAllow=`). Port 9100 stays closed to others even if the nftables rules are flushed or wrong. Both layers read the same `monitoring_sources`; with an empty list the exporter answers only on loopback. Dovecot's metrics port 9900 has only the firewall: it belongs to the Dovecot unit, which serves IMAP to everyone. The filter needs cgroup BPF, which a VM or a real server has; in an unprivileged container systemd logs that it is unsupported and starts the exporter without it.
+
+## integrity
+
+A daily check (`sovereign-integrity-check`, 04:30, after the backup) that files haven't been changed behind the admin's back, in three parts chosen so that upgrades cause no noise. Reinstalling three packages, as an upgrade would, made AIDE alone report 319 changes in `/usr` with identical contents; `dpkg --verify` reported none.
+
+- **Package files:** `dpkg --verify`, conffiles left out (some are changed on purpose). dpkg brings the right checksums with every upgrade.
+- **Files in `/usr` that no package owns:** a planted program or library, which `dpkg --verify` can't see. Generated files are expected: Python bytecode in `__pycache__`, the MIME cache, links managed by `update-alternatives`, and a short list in `integrity_usr_expected`, which also holds the files Sovereign's roles install there. On a fresh Debian 13 the check finds nothing.
+- **AIDE for the rest:** `/etc`, `/usr/local`, `/boot`, SSH keys and crontabs; data that changes all the time (mail, databases, Rspamd's statistics) and certificates (the DANE check watches the key) are left out. Its database is updated at the end of every playbook run, after the handlers: the playbook's own changes become the new state, and the run lists what changed since the last one, so read that list. AIDE's database is in the restic backup, so its history can't be rewritten on the server alone.
+
+New findings are mailed to `root` (the postmaster), once per set of findings, with a metric and an example alert. Debian's daily AIDE job is turned off, because it mails every day, also when nothing changed, which teaches people to ignore it. AIDE's own peak was about 120 MB for a full scan on the test VM, so it runs apart from the backup.
+
+What this doesn't do: stop a careful attacker with root, who can change the checksums, the database and the check itself. It catches the obvious (automated attacks, a careless intruder) and a mistaken manual change. Python bytecode in `__pycache__` is not checked, because package scripts generate it.
+

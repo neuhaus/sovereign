@@ -1,0 +1,74 @@
+---
+# bsd-mailx: AIDE's report tool and a plain mail command for admins.
+- name: Install AIDE
+  ansible.builtin.apt:
+    name: [aide, aide-common, bsd-mailx]
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+
+# A file of our own in Debian's include directory; aide.conf stays as shipped.
+- name: Narrow AIDE's scope
+  ansible.builtin.template:
+    src: 90_sovereign.j2
+    dest: /etc/aide/aide.conf.d/90_sovereign
+    owner: root
+    group: root
+    mode: "0644"
+
+# Debian's daily job mails every day, also when nothing changed; the check
+# below mails only new findings.
+- name: Turn off Debian's daily AIDE job
+  ansible.builtin.systemd_service:
+    name: dailyaidecheck.timer
+    state: stopped
+    enabled: false
+
+- name: Install the integrity check
+  ansible.builtin.template:
+    src: sovereign-integrity-check.j2
+    dest: /usr/local/sbin/sovereign-integrity-check
+    owner: root
+    group: root
+    mode: "0755"
+
+# Everything this run changes, handlers included, must be in place before
+# AIDE's database takes it as the new state.
+- name: Apply pending changes
+  ansible.builtin.meta: flush_handlers
+
+- name: Check for AIDE's database
+  ansible.builtin.stat:
+    path: /var/lib/aide/aide.db
+  register: integrity_aide_db
+
+- name: Create AIDE's database
+  ansible.builtin.command:
+    argv: [aideinit, -y, -f]
+  when: not integrity_aide_db.stat.exists
+  changed_when: true
+
+# Exit codes 1-7: entries added, removed or changed; 14 and more: errors.
+- name: Compare with AIDE's database
+  ansible.builtin.command:
+    argv: [aide, --check, --config, /etc/aide/aide.conf]
+  register: integrity_aide_check
+  when: integrity_aide_db.stat.exists
+  changed_when: false
+  failed_when: integrity_aide_check.rc >= 8
+  check_mode: false
+
+# The playbook's own changes become the new state. Anything else that
+# changed since the last run is in this list too: read it.
+- name: Show what changed since the last run
+  ansible.builtin.debug:
+    msg: "{{ integrity_aide_check.stdout_lines | select('match', '^[fdlbcps][^ ]*: ') | list }}"
+  when: integrity_aide_db.stat.exists and integrity_aide_check.rc in range(1, 8)
+
+- name: Update AIDE's database
+  ansible.builtin.shell:
+    cmd: >-
+      aide --update --config /etc/aide/aide.conf >/dev/null;
+      rc=$?; [ "$rc" -lt 8 ] && mv /var/lib/aide/aide.db.new /var/lib/aide/aide.db
+  when: integrity_aide_db.stat.exists and integrity_aide_check.rc in range(1, 8)
+  changed_when: true

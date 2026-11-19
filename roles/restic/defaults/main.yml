@@ -50,6 +50,8 @@ restic_paths:
   - "{{ radicale_storage_dir | default('/var/lib/radicale/collections') }}"
   - /etc/letsencrypt
   - /etc/postsrsd.secret
+  # AIDE's database: its history can't be rewritten on the server alone.
+  - /var/lib/aide
 
 # Not needed: Dovecot rebuilds the full-text index, which also holds search
 # terms in plaintext.

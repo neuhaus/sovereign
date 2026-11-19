@@ -14,7 +14,7 @@ What you get
 - **Webmail** with Roundcube, behind HTTP basic auth, where users also change their password and filters.
 - **Calendars and contacts** with Radicale, including shared ones.
 - **Encrypted offsite backups** with Restic, and a tested restore.
-- **Hardening and upkeep:** SSH with keys only, nftables firewall, fail2ban, a systemd sandbox for every service that faces the network or handles outside data, kernel hardening, a DNSSEC-validating resolver, automatic security updates, a mail to the postmaster when a reboot is pending, an upgrade fails or the TLSA record no longer matches, Prometheus metrics.
+- **Hardening and upkeep:** SSH with keys only, nftables firewall, fail2ban, a systemd sandbox for every service that faces the network or handles outside data, kernel hardening, a DNSSEC-validating resolver, automatic security updates, a daily integrity check (package files, unowned files, AIDE), a mail to the postmaster when files changed, a reboot is pending, an upgrade fails or the TLSA record no longer matches, Prometheus metrics.
 - **Several mail domains** on one server, each with its own mailboxes and DKIM key.
 - **Administration as code:** domains, mailboxes and aliases on the server follow one YAML file exactly.
 

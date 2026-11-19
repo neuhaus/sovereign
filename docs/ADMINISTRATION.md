@@ -142,10 +142,21 @@ The server mails `root`, which reaches the postmaster of the first domain, when 
 
 - **A reboot is pending:** a kernel or microcode update is installed but takes effect only after a reboot. Checked hourly, mailed once per update.
 - **An upgrade failed:** unattended upgrades mail only on errors.
+- **Files changed:** the daily integrity check found package files that differ from their packages, files in `/usr` no package owns, or changes AIDE reports in `/etc`, `/usr/local`, SSH keys or crontabs. Mailed once per set of findings; see Integrity check below.
 - **A database is damaged:** the backup's check of a database copy failed; the last good copy stays in the backups. Mailed on every backup until it is fixed, see [BACKUP.md](BACKUP.md#checking-on-backups).
 - **A TLSA record doesn't match:** the published DANE record of an MX no longer matches the certificate, so servers using DANE defer all mail to this one. Checked daily and after each new certificate, mailed once until it is fixed.
 
 Each also has a metric and an example alert (see Operations), for those with Prometheus.
+
+## Integrity check
+
+The daily check mails the postmaster when files changed that neither an upgrade nor the playbook explains (how it works: [ROLES.md](ROLES.md#integrity)).
+
+- **You changed something on purpose** (an edit in `/etc`, a script in `/usr/local`): run the playbook, which takes the current state as the new reference, or `aide --update && mv /var/lib/aide/aide.db.new /var/lib/aide/aide.db`. Better, put the change into the playbook.
+- **A package file differs:** `dpkg --verify <package>` names it; `apt install --reinstall <package>` restores it, once you know why it changed.
+- **You didn't change it:** treat the server as compromised. Don't trust tools on it; restore onto a fresh server from a backup taken before the change (see [BACKUP.md](BACKUP.md)), then change all passwords and keys.
+
+Run it by hand: `systemctl start sovereign-integrity-check`, output in `journalctl -u sovereign-integrity-check`.
 
 ## Operations
 
@@ -153,7 +164,7 @@ Each also has a metric and an example alert (see Operations), for those with Pro
 - **Webmail CSP reports:** `journalctl -t nginx_csp` shows what the Content-Security-Policy would block. If it stays empty in normal use, set `roundcube_csp_enforce: true`.
 - **Rspamd web interface:** only on the server itself. `ssh -L 11334:127.0.0.1:11334 deploy@mail.example.org`, then open <http://127.0.0.1:11334>. The firewall lets only the user the playbook runs as (and root, `vmail`, `_rspamd`) reach the controller, so tunnel as that user; for other admins, add them to `dovecot_rspamd_controller_users`.
 - **Metrics:** node exporter on 9100, Dovecot on 9900, only from `monitoring_sources`. The node exporter enforces that list twice, in the firewall and in its own systemd sandbox, so a new monitoring host needs the playbook run, not just a firewall rule added by hand. Besides the usual node metrics: the state of every service and timer (`node_systemd_unit_state`), the Postfix queue (`sovereign_postfix_queue_*`, every 5 minutes), the certificate's expiry (`sovereign_certificate_expiry_timestamp_seconds`, written when the services have reloaded it), backups (see [BACKUP.md](BACKUP.md#checking-on-backups)) and the security support status.
-- **Alerts:** [monitoring/alerts.yml](../monitoring/alerts.yml) has example rules for your Prometheus: exporter down, failed units, mail queue, disk space and inodes, memory, certificate expiry, backups, the security support status, pending reboots and DANE TLSA records. They are tested with `promtool` (`monitoring/alerts.test.yml`), and a Molecule test checks that every metric they use exists. Adjust the thresholds in your copy.
+- **Alerts:** [monitoring/alerts.yml](../monitoring/alerts.yml) has example rules for your Prometheus: exporter down, failed units, mail queue, disk space and inodes, memory, certificate expiry, backups, the security support status, pending reboots, DANE TLSA records and the integrity check. They are tested with `promtool` (`monitoring/alerts.test.yml`), and a Molecule test checks that every metric they use exists. Adjust the thresholds in your copy.
 - **Security support:** `sovereign_security_support_affected_packages{type="ended|earlyend|limited"}` counts installed packages Debian no longer fully supports; alert if any is above 0, and if `sovereign_security_support_last_run_timestamp_seconds` is older than about 8 days. `journalctl -u sovereign-support-status` names the packages. Exempt a package only with a reason, in `unattended_upgrades_support_exceptions`. Not covered by this check: restic and the node exporter (Go, updated only with point releases) and postsrsd from backports.
 - **isc-dhcp-client still installed:** the role leaves it when it is in use and says why. To switch, with console access in case the network does not come back: `apt install dhcpcd-base`, then `apt remove isc-dhcp-client` and reboot; the next run of the role finds nothing left to do.
 - **Failed logins:** `fail2ban-client banned` lists bans. Mail, calendar and SSH logins are banned after **one** failure, the webmail after three; bans start at 10 minutes and double for repeat offenders, up to a day. After changing a password, update all devices quickly, or their network gets banned. Unban with `fail2ban-client set <jail> unbanip <address>`. Postfix also allows at most 30 logins per address and minute on 465 and 587 (`postfix_auth_rate_limit`).

@@ -112,6 +112,7 @@ Consider the following checklist when reviewing a module's design.
 - Can the role's service write to a directory containing something root executes? SQLite writers need write access to the database's directory, so keep that directory separate.
 - Does the role add a service? It gets the hardening described under [Hardening](#hardening), with tests, before it is merged.
 - Does the role open a port? If so, update the nftables role, the README's port table and the firewall and listener tests.
+- Does the role install a file into `/usr` outside `/usr/local`? Add it to `integrity_usr_expected` in the integrity role, or the daily check reports it.
 - Does the role change a Debian conffile? Use a file of its own instead (see [Upgrades](#upgrades)).
 - Does the service need to tell the admin something? Mail `root` (it reaches the postmaster) and export a metric with an example alert, like the reboot and TLSA checks.
 - Does README.md need to be updated based on new or changed finalization instructions?

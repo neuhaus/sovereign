@@ -156,6 +156,23 @@ groups:
           summary: "{{ $labels.instance }}: backup repository check failed or overdue"
           description: "journalctl -u sovereign-backup-check; restic check runs weekly."
 
+      # --- Integrity ------------------------------------------------------
+      - alert: SovereignIntegrityFindings
+        expr: sovereign_integrity_findings > 0
+        labels:
+          severity: critical
+        annotations:
+          summary: "{{ $labels.instance }}: {{ $value }} changed files ({{ $labels.check }})"
+          description: "The postmaster got the list. Not changed by you or the playbook? See docs/ADMINISTRATION.md."
+
+      - alert: SovereignIntegrityCheckNotRun
+        expr: time() - sovereign_integrity_check_last_run_timestamp_seconds > 2 * 86400
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.instance }}: integrity check not run for over 2 days"
+          description: "journalctl -u sovereign-integrity-check; the check runs daily."
+
       # --- DANE -----------------------------------------------------------
       - alert: SovereignDaneMismatch
         expr: sovereign_dane_tlsa_state{state="mismatch"} == 1

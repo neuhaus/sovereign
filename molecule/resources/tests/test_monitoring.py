@@ -40,7 +40,7 @@ def test_every_metric_in_the_rules_exists(host, sovtest_vars):
     # Run every job that writes a textfile metric once, so the test does not
     # depend on timers or on the order of the test files.
     backups = not without_restic(sovtest_vars)
-    for unit in ("sovereign-mailqueue-metrics", "sovereign-support-status", "sovereign-reboot-pending", "sovereign-dane-check") + (("sovereign-backup", "sovereign-backup-check") if backups else ()):
+    for unit in ("sovereign-mailqueue-metrics", "sovereign-support-status", "sovereign-reboot-pending", "sovereign-dane-check", "sovereign-integrity-check") + (("sovereign-backup", "sovereign-backup-check") if backups else ()):
         host.check_output("systemctl start %s.service", unit)
     rules = yaml.safe_load((MONITORING / "alerts.yml").read_text())
     used = set()

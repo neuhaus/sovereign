@@ -36,7 +36,7 @@ mail_mailboxes:
     #     password: "{ARGON2ID}$argon2id$..."   # hash of "PhOnE001-<secret>"
 
 # postmaster@ and abuse@ are required for every domain. Mail to root, and with
-# it the server's notices (pending reboot, failed upgrade, broken TLSA record),
+# it the server's notices (changed files, pending reboot, failed upgrade, broken TLSA record),
 # goes to the first domain's postmaster: point it at someone who reads it.
 mail_aliases:
   - source: postmaster@example.org

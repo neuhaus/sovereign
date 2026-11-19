@@ -199,3 +199,22 @@ tests:
             exp_annotations:
               summary: "mail: the TLSA record of mail.example.org doesn't match the certificate"
               description: "Servers using DANE defer all mail to it. Publish the current hash; see the README."
+
+  # Changed files alert at once, per check.
+  - interval: 1m
+    input_series:
+      - series: 'sovereign_integrity_findings{instance="mail",check="unowned_in_usr"}'
+        values: '0 2x5'
+      - series: 'sovereign_integrity_findings{instance="mail",check="aide"}'
+        values: '0x6'
+    alert_rule_test:
+      - eval_time: 0m
+        alertname: SovereignIntegrityFindings
+        exp_alerts: []
+      - eval_time: 1m
+        alertname: SovereignIntegrityFindings
+        exp_alerts:
+          - exp_labels: {instance: mail, check: unowned_in_usr, severity: critical}
+            exp_annotations:
+              summary: "mail: 2 changed files (unowned_in_usr)"
+              description: "The postmaster got the list. Not changed by you or the playbook? See docs/ADMINISTRATION.md."
