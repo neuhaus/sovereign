@@ -191,4 +191,4 @@ verifier:
   directory: ../resources/tests
   options:
     # The 30 slowest tests at the end of each run: where to cut.
-    durations: 30
+    durations: "30"
