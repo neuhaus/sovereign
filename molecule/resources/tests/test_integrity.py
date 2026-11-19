@@ -2,6 +2,7 @@
 
 import re
 import time
+import uuid
 
 import pytest
 
@@ -36,7 +37,9 @@ def test_aide_scope_leaves_package_files_out(host):
 
 
 def test_planted_files_are_found_and_mailed_once(host, sovtest_vars):
-    planted = ["/usr/local/sbin/sovtest-planted", "/usr/lib/sovtest-planted.so"]
+    # A new name each run: a reused VM still has the mails of earlier runs.
+    tag = uuid.uuid4().hex[:8]
+    planted = ["/usr/local/sbin/sovtest-planted-%s" % tag, "/usr/lib/sovtest-planted-%s.so" % tag]
     before = findings(host)
     try:
         host.check_output("for f in %s %s; do echo planted > $f; done", *planted)
@@ -44,13 +47,13 @@ def test_planted_files_are_found_and_mailed_once(host, sovtest_vars):
         assert after["aide"] > before["aide"], (before, after)
         assert after["unowned_in_usr"] == before["unowned_in_usr"] + 1, (before, after)
         for _ in range(30):
-            if mails(host, sovtest_vars, "sovtest-planted.so"):
+            if mails(host, sovtest_vars, "sovtest-planted-%s.so" % tag):
                 break
             time.sleep(2)
-        assert len(mails(host, sovtest_vars, "sovtest-planted.so")) == 1
+        assert len(mails(host, sovtest_vars, "sovtest-planted-%s.so" % tag)) == 1
         findings(host)  # the same findings again: no second mail
         time.sleep(5)
-        assert len(mails(host, sovtest_vars, "sovtest-planted.so")) == 1
+        assert len(mails(host, sovtest_vars, "sovtest-planted-%s.so" % tag)) == 1
     finally:
         host.run("rm -f %s %s", *planted)
     assert findings(host)["unowned_in_usr"] == before["unowned_in_usr"]
