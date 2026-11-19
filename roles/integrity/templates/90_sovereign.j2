@@ -6,6 +6,9 @@
 
 # /usr: only /usr/local.
 !/usr/(?!local(/|$))
+# Temporary files, Ansible's own payloads among them, change all the time.
+!/tmp(/|$)
+!/dev/shm(/|$)
 # /var: only the crontabs.
 !/var/(?!spool(/cron(/|$)|$))
 # Home directories: only the SSH keys.
