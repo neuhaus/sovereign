@@ -1,10 +1,20 @@
 ---
-# Run by test_password_reset.py with changed inventory variables, so that the
-# tests exercise the real roles.
-- name: Apply the mail database and dovecot roles
+# Run by test_password_reset.py and others with changed inventory variables,
+# so that the tests exercise the real roles: the mail database and the part
+# of the dovecot role that acts on it (ending revoked sessions). The rest of
+# the dovecot role doesn't change with the mailboxes; leaving it out takes a
+# run from 21 to about 8 seconds.
+- name: Apply the mail database role
   hosts: mailservers
   become: true
   gather_facts: true
-  roles:
-    - role: maildb
-    - role: dovecot
+  # import_role, not include_role: static, so the dovecot role's handlers are
+  # there when the maildb role notifies them (a restart after a schema change).
+  tasks:
+    - name: Apply the mail database role
+      ansible.builtin.import_role:
+        name: maildb
+    - name: Disconnect users whose access was revoked
+      ansible.builtin.import_role:
+        name: dovecot
+        tasks_from: kick

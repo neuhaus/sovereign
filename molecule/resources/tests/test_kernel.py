@@ -39,6 +39,14 @@ def test_processes_cannot_read_each_others_memory(host):
     # ptrace_scope 2: not even the same user may attach to a process.
     if in_container(host):
         pytest.skip("a container shares the host's kernel settings")
-    script = "import subprocess; p = subprocess.Popen(['sleep', '30']); open('/proc/%d/mem' % p.pid, 'rb'); p.kill()"
+    # The child is killed whatever happens: it would hold the output open.
+    script = (
+        "import subprocess\n"
+        "p = subprocess.Popen(['sleep', '30'], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)\n"
+        "try:\n"
+        "    open('/proc/%d/mem' % p.pid, 'rb')\n"
+        "finally:\n"
+        "    p.kill()\n"
+    )
     result = host.run("runuser -u nobody -- python3 -c %s", script)
     assert result.rc != 0 and "PermissionError" in result.stderr, result.stderr

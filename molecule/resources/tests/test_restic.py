@@ -135,6 +135,9 @@ def test_failure_before_restic_is_recorded(host, backup):
     wrapper = "/usr/local/bin/sqlite3"
     assert not host.file(wrapper).exists
     before = metrics(host)
+    # The timestamps have a resolution of a second; the previous run may
+    # have ended within this one.
+    time.sleep(1.1)
     host.check_output("printf '%%s\\n' '#!/bin/sh' 'exit 1' > %s && chmod 0755 %s", wrapper, wrapper)
     try:
         assert host.run("systemctl start sovereign-backup.service").rc != 0

@@ -10,6 +10,43 @@ import tempfile
 
 import pytest
 import testinfra
+import testinfra.backend
+import testinfra.utils.ansible_runner
+from testinfra.backend import base
+
+
+class IncusBackend(base.BaseBackend):
+    """Run commands with incus exec, as the incus connection plugin does.
+
+    testinfra doesn't know community.general.incus and falls back to starting
+    a whole ansible process per command: 0.8 s each, against 0.03 s here.
+    """
+
+    NAME = "incus"
+
+    def __init__(self, name, *args, **kwargs):
+        self.name = name
+        super().__init__(name, *args, **kwargs)
+
+    def run(self, command, *args, **kwargs):
+        cmd = self.get_command(command, *args)
+        out = self.run_local("incus exec --force-noninteractive %s -- /bin/sh -c %s", self.name, cmd)
+        out.command = self.encode(cmd)
+        return out
+
+
+testinfra.backend.BACKENDS["incus"] = "conftest.IncusBackend"
+_get_ansible_host = testinfra.utils.ansible_runner.get_ansible_host
+
+
+def _get_ansible_host_incus(config, inventory, host, **kwargs):
+    hostvars = inventory.get("_meta", {}).get("hostvars", {}).get(host, {})
+    if hostvars.get("ansible_connection") == "community.general.incus":
+        return testinfra.get_host("incus://" + hostvars.get("ansible_host", host))
+    return _get_ansible_host(config, inventory, host, **kwargs)
+
+
+testinfra.utils.ansible_runner.get_ansible_host = _get_ansible_host_incus
 
 # Connects to ip:port from the probing instance and prints the outcome:
 # "open" (accepted and listening), "refused" (accepted by the firewall, nothing
@@ -109,6 +146,11 @@ def mail_client(instance):
     return run
 
 
+# The tests run about 45 playbooks; each gathered the same facts again, a few
+# seconds over incus every time. Kept for the session only.
+FACT_CACHE = tempfile.mkdtemp(prefix="sovtest-facts-")
+
+
 def run_playbook(host, playbook, variables, extra_inventory=None, limit=None, expect_failure=False):
     """Run a playbook with the scenario's inventory.
 
@@ -126,7 +168,17 @@ def run_playbook(host, playbook, variables, extra_inventory=None, limit=None, ex
         result = subprocess.run(
             command + ["-e", "@" + extra_vars.name, str(playbook)],
             # Without colour: the recap below is parsed (CI forces colour on).
-            env={**os.environ, "ANSIBLE_ROLES_PATH": str(tests.parents[2] / "roles"), "ANSIBLE_FORCE_COLOR": "0", "PY_COLORS": "0"},
+            env={
+                **os.environ,
+                "ANSIBLE_ROLES_PATH": str(tests.parents[2] / "roles"),
+                "ANSIBLE_FORCE_COLOR": "0",
+                "PY_COLORS": "0",
+                "ANSIBLE_GATHERING": "smart",
+                "ANSIBLE_CACHE_PLUGIN": "jsonfile",
+                "ANSIBLE_CACHE_PLUGIN_CONNECTION": FACT_CACHE,
+                "ANSIBLE_CACHE_PLUGIN_TIMEOUT": "86400",
+                "ANSIBLE_PIPELINING": "True",
+            },
             capture_output=True,
             text=True,
             check=False,

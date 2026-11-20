@@ -5,5 +5,15 @@
   become: true
   gather_facts: true
   roles:
+    # Not run (when: false), but their defaults hold their timer jobs:
+    # without them the systemd_timers role removes those timers as stale.
+    - role: unattended_upgrades
+      when: false
+    - role: postfix
+      when: false
+    - role: certbot
+      when: false
+    - role: integrity
+      when: false
     - role: restic
     - role: systemd_timers

@@ -36,6 +36,9 @@ provisioner:
   name: ansible
   env:
     ANSIBLE_ROLES_PATH: ${MOLECULE_PROJECT_DIRECTORY}/roles
+    # The incus connection supports it; off by default. A quarter less time
+    # per task (no module file copied over for each).
+    ANSIBLE_PIPELINING: "True"
   playbooks:
     create: ../resources/create.yml
     prepare: ../resources/prepare.yml
